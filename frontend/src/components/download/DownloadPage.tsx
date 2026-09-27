@@ -23,9 +23,10 @@ const EA_RELEASES: EaRelease[] = [
       'once you set EnableTrading = true on its chart. Also closes part of a ' +
       'position, and sends the contract figures the assistant needs before ' +
       'it will say anything about lot sizes. Put this one on a demo account ' +
-      'first. Source: compile it in MetaEditor (F7) before it appears in the ' +
-      'Navigator.',
+      'first. Take the .EX5 — it is already compiled and installs straight ' +
+      'into MQL5/Experts. The .MQ5 is the source it was built from.',
     downloads: [
+      { platform: 'MT5', filename: 'OnlyFunds_AI_v1.4.ex5', ext: '.EX5' },
       { platform: 'MT5', filename: 'OnlyFunds_AI_v1.4.mq5', ext: '.MQ5 SOURCE' },
     ],
   },
@@ -37,37 +38,27 @@ const EA_RELEASES: EaRelease[] = [
       'code left out of the build entirely — not switched off: absent. There ' +
       'is no setting to find and nothing the server sends can make it place, ' +
       'change or close an order. This is the one for accounts where real ' +
-      'money is working. Source: compile it in MetaEditor (F7) first.',
+      'money is working. Take the .EX5 — it is already compiled. The .MQ5 is ' +
+      'the source it was built from, if you would rather read it first.',
     downloads: [
+      { platform: 'MT5', filename: 'OnlyFunds_Report_v1.4.ex5', ext: '.EX5' },
       { platform: 'MT5', filename: 'OnlyFunds_Report_v1.4.mq5', ext: '.MQ5 SOURCE' },
-    ],
-  },
-  {
-    name: 'OnlyFunds Reporter',
-    version: 'v1.3',
-    description:
-      'FALLBACK ONLY — kept because it is the newest build that installs ' +
-      'without compiling anything, so there is something to go back to if ' +
-      'v1.4 will not build or misbehaves. It is retired the moment a ' +
-      'compiled v1.4 is up here. Reports the account and carries out ' +
-      'dashboard orders when EnableTrading is on (off by default).',
-    downloads: [
-      { platform: 'MT5', filename: 'OnlyFunds_Reporter_v1.3.ex5', ext: '.EX5' },
-      { platform: 'MT5', filename: 'OnlyFunds_Reporter_v1.3.mq5', ext: '.MQ5 SOURCE' },
     ],
   },
   {
     name: 'OnlyFunds Reporter',
     version: 'v1.1',
     description:
-      'Report-only, ready compiled. Superseded: v1.4 with EnableTrading off ' +
+      'The old report-only build, kept for MT4 — v1.4 is MT5 only, and this ' +
+      'is the only .MQ4 there is. On MT5 take OnlyFunds Report instead: it ' +
       'reports the same things and adds the contract figures the assistant ' +
-      'needs before it will say anything about lot sizes. Keep this one only ' +
-      'for a terminal where compiling is not an option.',
-    // MT4 has no compiled build yet, so it gets no button — a link to a
-    // missing .ex4 would just 404.
+      'needs before it will say anything about lot sizes.',
+    // There is no compiled .ex4, and a button for one would just 404. The
+    // MT4 source is here though: the description points MT4 users at it, so
+    // leaving it off the list would be a promise the page does not keep.
     downloads: [
       { platform: 'MT5', filename: 'OnlyFunds_Reporter_v1.1.ex5', ext: '.EX5' },
+      { platform: 'MT4', filename: 'OnlyFunds_Reporter_v1.1.mq4', ext: '.MQ4 SOURCE' },
     ],
   },
 ];
