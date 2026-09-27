@@ -51,6 +51,17 @@ if [ -f "$ENV_FILE" ]; then
   ENV_OUT="$BACKUP_DIR/env-$STAMP.txt"
   cp "$ENV_FILE" "$ENV_OUT"
   chmod 600 "$ENV_OUT"
+  # 600 alone means the puller cannot read it, and the one file a restore
+  # cannot do without is the one that never leaves the machine. The folder's
+  # default ACL does not save it either: chmod resets the mask to the group
+  # bits, so the inherited entry comes out "#effective:---". Name the backup
+  # account explicitly and set the mask with it.
+  BACKUP_USER="${BACKUP_USER:-ofbackup}"
+  if id "$BACKUP_USER" >/dev/null 2>&1 && command -v setfacl >/dev/null 2>&1; then
+    setfacl -m "u:$BACKUP_USER:r,g::---,m::r" "$ENV_OUT" 2>/dev/null \
+      && echo "[backup] $BACKUP_USER may read $ENV_OUT" \
+      || echo "[backup] WARNING: could not grant $BACKUP_USER read on $ENV_OUT"
+  fi
   echo "[backup] Wrote $ENV_OUT"
 fi
 
