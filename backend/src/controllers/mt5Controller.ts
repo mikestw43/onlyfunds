@@ -11,6 +11,7 @@ import { markAsReal, unmarkAsReal } from '../mock/simulator';
 import prisma from '../lib/prisma';
 import { dropCommands, markCommandsSent, settleCommand } from '../services/commandLog';
 import type { Account, Order, PendingOrder } from '../mock/data';
+import { executionRefusal } from '../services/eaBuild';
 
 interface MT5PushPayload {
   apiKey: string;
@@ -383,9 +384,8 @@ export const receiveMT5Push = (req: Request, res: Response): void => {
     // than dropping them: an order that waits for somebody to switch
     // trading on is an order placed at a price that has moved on. The
     // dashboard reads the reason from the command log.
-    const why = payload.eaVersion
-      ? 'Trading is switched off in the EA on this account'
-      : 'The EA on this account only reports — it cannot place orders';
+    const why = executionRefusal({ canExecute: false, eaVersion: payload.eaVersion })
+      ?? 'The EA on this account will not carry out orders';
     console.warn(`[MT5] Dropped ${commands.length} command(s) for ${account.name}: ${why}`);
     dropCommands(commands.map(c => c.id), why);
   } else if (commands.length > 0) {

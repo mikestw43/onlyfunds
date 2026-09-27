@@ -16,16 +16,30 @@ type EaRelease = {
 /** EA catalog — one entry per EA, with both platform variants inside. */
 const EA_RELEASES: EaRelease[] = [
   {
-    name: 'OnlyFunds Reporter',
+    name: 'OnlyFunds Report with AI',
     version: 'v1.4',
     description:
-      'Everything v1.3 does, plus closing part of a position and sending the ' +
-      'contract figures the assistant needs to work out a position size — ' +
-      'what a lot is worth, the volume steps, the live price and a 14-day ' +
-      'ATR. THE ONE TO INSTALL. Source only for now: open it in MetaEditor ' +
-      'and press Compile (F7) before it will appear in the Navigator.',
+      'Reports the account AND carries out the orders the dashboard sends, ' +
+      'once you set EnableTrading = true on its chart. Also closes part of a ' +
+      'position, and sends the contract figures the assistant needs before ' +
+      'it will say anything about lot sizes. Put this one on a demo account ' +
+      'first. Source: compile it in MetaEditor (F7) before it appears in the ' +
+      'Navigator.',
     downloads: [
-      { platform: 'MT5', filename: 'OnlyFunds_Reporter_v1.4.mq5', ext: '.MQ5 SOURCE' },
+      { platform: 'MT5', filename: 'OnlyFunds_ReportAI_v1.4.mq5', ext: '.MQ5 SOURCE' },
+    ],
+  },
+  {
+    name: 'OnlyFunds Report Only',
+    version: 'v1.4',
+    description:
+      'The same reporting and the same contract figures, with the trading ' +
+      'code left out of the build entirely — not switched off: absent. There ' +
+      'is no setting to find and nothing the server sends can make it place, ' +
+      'change or close an order. This is the one for accounts where real ' +
+      'money is working. Source: compile it in MetaEditor (F7) first.',
+    downloads: [
+      { platform: 'MT5', filename: 'OnlyFunds_ReportOnly_v1.4.mq5', ext: '.MQ5 SOURCE' },
     ],
   },
   {

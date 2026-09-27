@@ -9,6 +9,7 @@ import { priceRisk } from '../services/riskMath';
 import { broadcastToUser } from '../websocket/broadcaster';
 import prisma from '../lib/prisma';
 import type { Account } from '../mock/data';
+import { executionRefusal } from '../services/eaBuild';
 
 const router = Router();
 
@@ -161,14 +162,9 @@ router.post('/:id/close-all', (req: AuthRequest, res: Response) => {
  * It reports that on every push, and the answer decides whether pressing a
  * button does anything. Refusing here, with the reason, beats queueing a
  * command that gets dropped two seconds later somewhere the person pressing
- * the button cannot see.
+ * the button cannot see. The wording lives in services/eaBuild so this and
+ * the push handler cannot end up giving different advice.
  */
-const executionRefusal = (account: Account): string | null => {
-  if (account.canExecute) return null;
-  return account.eaVersion
-    ? 'Trading is switched off in the EA on this account. Set EnableTrading = true on its chart in MT5.'
-    : 'The EA on this account only reports. Update it to the version that carries out orders.';
-};
 
 // POST /api/accounts/:id/open-trade — queue an open trade command to the EA
 router.post('/:id/open-trade', (req: AuthRequest, res: Response) => {

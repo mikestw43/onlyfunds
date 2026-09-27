@@ -1,4 +1,17 @@
 //+------------------------------------------------------------------+
+//| OnlyFunds Report with AI v1.4                                    |
+//|                                                                  |
+//| GENERATED FILE - do not edit.                                    |
+//| Source: ea/OnlyFunds_Reporter_v1.4.mq5                           |
+//| Rebuild: python3 scripts/build-ea-variants.py                    |
+//+------------------------------------------------------------------+
+// Reports this account AND carries out the orders the dashboard
+// sends, once you set EnableTrading = true on its chart. Start
+// it on a demo account.
+
+#define ONLYFUNDS_AI 1
+
+//+------------------------------------------------------------------+
 //|                                      OnlyFunds_Reporter_v1.4.mq5 |
 //|                         OnlyFunds MT5 Dashboard EA               |
 //|                                                                  |
@@ -67,12 +80,46 @@
 //|   • Pushes closedDeals[] for the trade-history page, plus        |
 //|     brokerTimeOffset.                                            |
 //+------------------------------------------------------------------+
+//+------------------------------------------------------------------+
+//|  WHICH BUILD IS THIS                                             |
+//|                                                                  |
+//|  Two EAs come out of this one file, built by                     |
+//|  scripts/build-ea-variants.py:                                   |
+//|                                                                  |
+//|    ONLYFUNDS_AI defined -> "OnlyFunds Report with AI"            |
+//|        Reports, and carries out dashboard commands once          |
+//|        EnableTrading is switched on.                             |
+//|                                                                  |
+//|    not defined          -> "OnlyFunds Report Only"               |
+//|        The trading code is not compiled into it at all. There is |
+//|        no switch to find, and no server, no command and no       |
+//|        mistake can make this build place an order. That is a     |
+//|        stronger promise than a setting left off, which is the    |
+//|        point of having two: the reporter goes on the live        |
+//|        accounts where the real EAs are working.                  |
+//|                                                                  |
+//|  Edit THIS file. The two generated ones are overwritten.         |
+//+------------------------------------------------------------------+
 #property copyright "OnlyFunds"
-#property version   "1.3"
-#property description "OnlyFunds Dashboard: reports the account, and carries out dashboard commands when EnableTrading is on"
+#property version   "1.4"
+#ifdef ONLYFUNDS_AI
+#property description "OnlyFunds Report with AI v1.4: reports the account, and carries out dashboard commands when EnableTrading is on"
+#else
+#property description "OnlyFunds Report Only v1.4: reports the account. The trading code is not in this build - it cannot place an order."
+#endif
 
+//--- Named once, so the log line, the banner and the eaVersion the server
+//--- reads cannot drift apart the way "v1.2"/"v1.3" did in this file.
+#ifdef ONLYFUNDS_AI
+const string OF_BUILD = "1.4-ai";
+#else
+const string OF_BUILD = "1.4-report";
+#endif
+
+#ifdef ONLYFUNDS_AI
 #include <Trade/Trade.mqh>
 CTrade g_trade;
+#endif
 
 //--- Input Parameters
 input string   ApiKey         = "";           // API Key * (get from Dashboard → Accounts)
@@ -80,7 +127,9 @@ input string   ServerURL      = "https://onlyfunds.duckdns.org"; // Server URL
 input int      UpdateInterval = 2;            // Update interval (seconds)
 input int      SymbolListMinutes = 60;        // Re-send the broker's symbol list every N minutes
 input bool     MarketWatchOnly = false;       // true = only symbols in Market Watch
+input bool     VerboseLog      = true;        // Write every decision to the Experts log
 
+#ifdef ONLYFUNDS_AI
 //--- Trading (all of this is off until you say otherwise)
 input group    "=== Trading — read before switching on ==="
 input bool     EnableTrading      = false;    // MASTER SWITCH. false = report only, exactly like v1.2
@@ -94,7 +143,11 @@ input bool     AllowCloseAll      = true;     // Allow the dashboard's CLOSE ALL
 input int      MagicNumber        = 990001;   // Stamped on orders opened from the dashboard
 input int      MaxSlippagePoints  = 20;       // Deviation allowed when filling
 input int      RetryCount         = 2;        // Retries on requote / price change
-input bool     VerboseLog         = true;     // Write every decision to the Experts log
+#else
+//--- Report Only build. Nothing reads this but the lines that report the
+//--- build's own state; there is no trading code here to switch on.
+const bool     EnableTrading      = false;
+#endif
 
 input group    "=== What the dashboard is told about symbols ==="
 input int      SpecsMinutes       = 5;        // Re-send contract specs and ATR every N minutes (0 = off)
@@ -109,6 +162,7 @@ datetime g_lastDealTime   = 0;   // Watermark for closedDeals push
 int      g_backfillCount  = 0;
 datetime g_lastSymbolSend = 0;   // When the symbol list last went out
 
+#ifdef ONLYFUNDS_AI
 //--- Commands already carried out, so a repeat delivery cannot run twice.
 string   g_doneIds[];
 datetime g_doneAt[];
@@ -117,6 +171,7 @@ datetime g_execAt[];
 //--- Results waiting to be reported back to the server.
 string   g_ackJson = "";
 int      g_ackCount = 0;
+#endif
 
 #define SYMBOL_LIMIT 2000
 
@@ -134,7 +189,7 @@ int OnInit()
    g_lastDealTime = BrokerMidnight();
 
    EventSetTimer(1);
-   Print("OnlyFunds Reporter v1.2 started | Account: ", AccountInfoInteger(ACCOUNT_LOGIN));
+   Print("OnlyFunds Reporter ", OF_BUILD, " started | Account: ", AccountInfoInteger(ACCOUNT_LOGIN));
    Print("  Server: ", ServerURL);
    return INIT_SUCCEEDED;
 }
@@ -525,6 +580,7 @@ string BuildSpecsJson()
 }
 
 
+#ifdef ONLYFUNDS_AI
 //+------------------------------------------------------------------+
 //|                                                                  |
 //|  COMMANDS FROM THE DASHBOARD                                     |
@@ -1080,6 +1136,7 @@ void SendAck()
    if(res != 200)
       Print("OnlyFunds: could not report command results (HTTP ", res, ") — the dashboard will still show them as sent");
 }
+#endif // ONLYFUNDS_AI — end of the trading section
 
 //+------------------------------------------------------------------+
 void SendData()
@@ -1193,9 +1250,20 @@ void SendData()
       "\"todayPnl\":%.2f,"
       "\"closedOrdersToday\":%d,"
       "\"brokerTimeOffset\":%d,"
-      "\"eaVersion\":\"1.4\","
+#ifdef ONLYFUNDS_AI
+      "\"eaVersion\":\"1.4-ai\","
       "\"canExecute\":%s,"
       "\"canPartialClose\":true,"
+#else
+      // Report Only. canExecute is formatted from EnableTrading, a const
+      // false here, so the server is told plainly that nothing it sends
+      // would be carried out — and the suffix tells it why, so it can say
+      // "install the other build" rather than "switch trading on", which
+      // would send someone hunting for a setting this build does not have.
+      "\"eaVersion\":\"1.4-report\","
+      "\"canExecute\":%s,"
+      "\"canPartialClose\":false,"
+#endif
       "\"orders\":[%s],"
       "\"pending\":[%s],"
       "\"closedDeals\":%s"
@@ -1225,8 +1293,12 @@ void SendData()
    {
       if(!g_initDone)
       {
-         Print("✓ OnlyFunds: Connected! v1.3 | broker offset ", (int)brokerOffsetSec, "s | today P/L: ", DoubleToString(todayPl, 2), " (", closedToday, " deals)");
-         Print("  Trading: ", EnableTrading ? "ON — this EA will carry out dashboard commands" : "off (report only)");
+         Print("✓ OnlyFunds: Connected! ", OF_BUILD, " | broker offset ", (int)brokerOffsetSec, "s | today P/L: ", DoubleToString(todayPl, 2), " (", closedToday, " deals)");
+#ifdef ONLYFUNDS_AI
+         Print("  Trading: ", EnableTrading ? "ON — this EA will carry out dashboard commands" : "off (EnableTrading is false)");
+#else
+         Print("  Trading: not in this build — this is Report Only");
+#endif
          g_initDone = true;
       }
 
@@ -1234,8 +1306,10 @@ void SendData()
       // EnableTrading off the server does not send them at all, so this
       // finds nothing — but it is read either way rather than trusting
       // the server to have got that right.
+#ifdef ONLYFUNDS_AI
       if(EnableTrading)
          HandleCommands(CharArrayToString(result));
+#endif
    }
    else if(res == 404)
       Print("✗ OnlyFunds: Account not found — เพิ่ม account ใน Dashboard ก่อน (API Key: ", ApiKey, ")");
