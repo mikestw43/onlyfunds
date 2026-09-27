@@ -654,13 +654,32 @@ DSM → **Control Panel → Task Scheduler → Create → Scheduled Task →
 User-defined script**
 
 - **General:** ตั้งชื่อ `Pull OnlyFunds backup` · **User = `root`** (สำคัญ)
-- **Schedule:** Daily · เวลา **04:00** (หลังเซิร์ฟเวอร์สำรองตอนตี 3)
+- **Schedule:** Daily · เวลา **10:30**
 - **Task Settings → Run command:** วางบรรทัดนี้
 
 ```
-rsync -az --delete -e ssh ofbackup@168.144.251.72:/ /volume1/WebBackup/OnlyFunds/
+{ echo "=== $(date) ==="; rsync -az --delete --timeout=600 -e "ssh -o BatchMode=yes" ofbackup@168.144.251.72:/ /volume1/WebBackup/OnlyFunds/; echo "exit=$?"; } >> /volume1/WebBackup/onlyfunds-sync.log 2>&1
 ```
 - ติ๊ก **Send run details by email** เผื่อวันไหนพัง จะได้รู้
+
+> ⏰ **ทำไม 10:30 ไม่ใช่ตี 4** — เซิร์ฟเวอร์ตั้งเวลาไว้ที่ `0 3 * * *` ซึ่งเป็น
+> **UTC** ไม่ใช่เวลาไทย (ดู `deploy/setup.sh`) ตี 3 UTC = **10:00 น. บ้านเรา**
+> ตั้ง NAS ไว้ 10:30 คือดึงหลังเซิร์ฟเวอร์สำรองเสร็จครึ่งชั่วโมง ถ้าตั้งตี 4
+> ตามเวลาไทย จะกลายเป็นไปดึง 6 ชั่วโมง*ก่อน*ของคืนนั้นจะถูกสร้าง คือได้ของ
+> ค้างวันตลอดโดยไม่มีอะไรฟ้อง
+
+ที่เพิ่มเข้ามาในคำสั่ง และเพิ่มทำไม:
+
+| ส่วน | ทำไม |
+|---|---|
+| `--timeout=600` | ถ้าเน็ตค้างกลางคัน จะเลิกเองใน 10 นาที ไม่ค้างยันรอบหน้า |
+| `-o BatchMode=yes` | ห้าม ssh หยุดถามอะไรทั้งนั้น — ตอนตี 4 ไม่มีใครมาตอบ ให้ fail ไปเลยดีกว่าค้าง |
+| `>> onlyfunds-sync.log` | มีบันทึกว่าคืนไหนวิ่งบ้าง ผลเป็นยังไง |
+| `echo "exit=$?"` | `exit=0` คือสำเร็จ เลขอื่นคือพัง เปิดไฟล์ log ดูบรรทัดเดียวก็รู้ |
+
+ไฟล์ log อยู่ **นอก** โฟลเดอร์ที่ sync (`/volume1/WebBackup/` ไม่ใช่ข้างใน
+`OnlyFunds/`) เพราะ `--delete` จะลบทุกอย่างในโฟลเดอร์ปลายทางที่ไม่มีอยู่ต้นทาง
+— วางไว้ข้างในเมื่อไหร่ log จะโดนลบทิ้งทุกคืน
 
 กด OK แล้วเลือก task นั้น → **Run** เพื่อลองทันที
 
