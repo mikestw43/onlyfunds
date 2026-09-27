@@ -18,3 +18,8 @@ backend/prisma/schema.postgres.prisma
 
 # Uploaded EA files live on disk, never in git.
 uploads/
+
+# Python leaves these behind whenever a script here is imported rather
+# than run — scripts/build-ea-variants.py is imported by its own checks.
+__pycache__/
+*.pyc
