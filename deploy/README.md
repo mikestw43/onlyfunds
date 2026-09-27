@@ -658,9 +658,15 @@ User-defined script**
 - **Task Settings → Run command:** วางบรรทัดนี้
 
 ```
-{ echo "=== $(date) ==="; rsync -az --delete --timeout=600 -e "ssh -o BatchMode=yes" ofbackup@168.144.251.72:/ /volume1/WebBackup/OnlyFunds/; echo "exit=$?"; } >> /volume1/WebBackup/onlyfunds-sync.log 2>&1
+exec >> /volume1/WebBackup/onlyfunds-sync.log 2>&1
+echo "=== $(date) ==="
+rsync -az --delete --timeout=600 -e "ssh -o BatchMode=yes" ofbackup@168.144.251.72:/ /volume1/WebBackup/OnlyFunds/
+rc=$?
+echo "exit=$rc"
+exit $rc
 ```
-- ติ๊ก **Send run details by email** เผื่อวันไหนพัง จะได้รู้
+- ติ๊ก **Send run details by email** + **only when the script terminates
+  abnormally** เผื่อวันไหนพัง จะได้รู้
 
 > ⏰ **ทำไม 10:30 ไม่ใช่ตี 4** — เซิร์ฟเวอร์ตั้งเวลาไว้ที่ `0 3 * * *` ซึ่งเป็น
 > **UTC** ไม่ใช่เวลาไทย (ดู `deploy/setup.sh`) ตี 3 UTC = **10:00 น. บ้านเรา**
@@ -675,7 +681,10 @@ User-defined script**
 | `--timeout=600` | ถ้าเน็ตค้างกลางคัน จะเลิกเองใน 10 นาที ไม่ค้างยันรอบหน้า |
 | `-o BatchMode=yes` | ห้าม ssh หยุดถามอะไรทั้งนั้น — ตอนตี 4 ไม่มีใครมาตอบ ให้ fail ไปเลยดีกว่าค้าง |
 | `>> onlyfunds-sync.log` | มีบันทึกว่าคืนไหนวิ่งบ้าง ผลเป็นยังไง |
-| `echo "exit=$?"` | `exit=0` คือสำเร็จ เลขอื่นคือพัง เปิดไฟล์ log ดูบรรทัดเดียวก็รู้ |
+| `echo "exit=$rc"` | `exit=0` คือสำเร็จ เลขอื่นคือพัง เปิดไฟล์ log ดูบรรทัดเดียวก็รู้ |
+| `exit $rc` | **ขาดไม่ได้** ถ้าสคริปต์จบด้วย `echo` มันจะคืนค่า 0 เสมอ DSM เลย
+  เห็นว่างานสำเร็จทุกคืนแม้ rsync จะพัง → เมลเตือนไม่มีวันถูกส่ง บรรทัดนี้ส่ง
+  รหัสจริงของ rsync กลับไปให้ DSM |
 
 ไฟล์ log อยู่ **นอก** โฟลเดอร์ที่ sync (`/volume1/WebBackup/` ไม่ใช่ข้างใน
 `OnlyFunds/`) เพราะ `--delete` จะลบทุกอย่างในโฟลเดอร์ปลายทางที่ไม่มีอยู่ต้นทาง
