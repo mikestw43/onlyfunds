@@ -361,6 +361,8 @@
   "ai.ctx_today": "TODAY",
   "ai.ctx_history": "TRADES (30D)",
   "ai.ask_placeholder": "Ask anything…",
+  "ai.ask_placeholder_slash": "Ask anything…   / for an account",
+  "ai.pick_account": "Choose an account",
   "ai.send": "SEND",
   "ai.suggest_today": "Why am I down today?",
   "ai.suggest_risk": "Which position worries you most?",

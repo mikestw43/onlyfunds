@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { askAi, fetchAiContext, fetchAiStatus, type AiContext, type AiStatus, fetchAiChats, fetchAiChat, deleteAiChat, truncateAiChat,
-  type AiChatSummary } from '../../services/api';
+  type AiChatSummary, fetchAccounts } from '../../services/api';
+import type { Account } from '../../types';
 import { useTranslation } from '../../i18n/useTranslation';
 import { useUIStore } from '../../stores/uiStore';
 import { IconSpark, IconMic, IconPlus, IconCopy, IconRetry, IconPencil, IconArrowUp } from '../icons';
@@ -107,6 +108,20 @@ export const AiSheet = () => {
   const [writing, setWriting] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
   const boxRef = useRef<HTMLTextAreaElement>(null);
+
+  /**
+   * Typing "/" offers the accounts.
+   *
+   * Naming the account is not optional — the assistant is told never to
+   * guess which one, so an unnamed order costs a round trip every time —
+   * and the thing it wants is an account number nobody has memorised.
+   * Picking it from a list is also the only way the spelling is certainly
+   * right, which for the one field that decides where an order lands is
+   * worth more than the keystrokes it saves.
+   */
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [slash, setSlash] = useState<{ at: number; query: string } | null>(null);
+  const [hi, setHi] = useState(0);
   // The question in flight, so STOP has something to cancel.
   const inflight = useRef<AbortController | null>(null);
   // Shown only once the conversation has been scrolled away from the end.
@@ -128,6 +143,15 @@ export const AiSheet = () => {
   // What the microphone hears goes into the box, never straight out: this
   // box can open a trade, and saying something aloud is not the same as
   // meaning it. The person still presses send.
+  useEffect(() => {
+    if (!open) return;
+    void fetchAccounts()
+      .then((rows: Account[]) => setAccounts(Array.isArray(rows) ? rows : []))
+      // The picker is a shortcut, not the way in: typing the name still
+      // works, so a failure here goes no further than an absent list.
+      .catch(() => setAccounts([]));
+  }, [open]);
+
   useEffect(() => {
     if (mic.heard) setDraft(mic.heard);
   }, [mic.heard]);
@@ -302,6 +326,7 @@ export const AiSheet = () => {
     // an empty box with a picture in it still sends.
     if ((!question && attached.length === 0) || busy) return;
     setDraft('');
+    setSlash(null);
     setPhotos([]);
     // The composer holds focus through the tap so the button does not
     // move out from under the finger; once the question is away, the
@@ -431,6 +456,46 @@ export const AiSheet = () => {
    * the one that works.
    */
   const keepKeyboard = (e: React.PointerEvent) => e.preventDefault();
+
+  /** A "/" that begins a word, and whatever has been typed after it. */
+  const SLASH = /(?:^|\s)\/([^\s/]*)$/;
+
+  const onDraft = (value: string, caret: number) => {
+    setDraft(value);
+    const m = value.slice(0, caret).match(SLASH);
+    // The slash itself sits one character before what was typed after it.
+    setSlash(m ? { at: caret - m[1].length - 1, query: m[1] } : null);
+    setHi(0);
+  };
+
+  const picks = slash
+    ? accounts.filter(a => {
+        const q = slash.query.toLowerCase();
+        return q === ''
+          || a.name.toLowerCase().includes(q)
+          || String(a.accountNumber ?? '').includes(q);
+      }).slice(0, 6)
+    : [];
+
+  /**
+   * Put the account into the sentence, name and number both.
+   *
+   * The number alone is what the assistant wants and is unreadable to a
+   * person; the name alone is readable and can repeat between brokers.
+   * Together the sentence still says what it means when read back a week
+   * later, and there is nothing for the assistant to resolve.
+   */
+  const pick = (a: Account) => {
+    if (!slash) return;
+    const box = boxRef.current;
+    const caret = box?.selectionStart ?? draft.length;
+    const label = a.accountNumber ? `${a.name} #${a.accountNumber}` : a.name;
+    setDraft(draft.slice(0, slash.at) + label + ' ' + draft.slice(caret));
+    setSlash(null);
+    const to = slash.at + label.length + 1;
+    // After React has written the new value, or the caret lands in the old one.
+    requestAnimationFrame(() => { box?.focus(); box?.setSelectionRange(to, to); });
+  };
 
   /** Abandon the question in flight. */
   const stop = () => {
@@ -879,6 +944,28 @@ export const AiSheet = () => {
         </div>
       )}
 
+      {/* Typing "/" offers the accounts by name */}
+      {picks.length > 0 && (
+        <div className="ai-pick" role="listbox" aria-label={t('ai.pick_account')}>
+          {picks.map((a, i) => (
+            <button
+              key={a.id}
+              role="option"
+              aria-selected={i === hi}
+              // Pointer down, and prevented: a tap that let the textarea
+              // blur first would shut the phone keyboard and scroll the
+              // sheet out from under the finger mid-tap.
+              onPointerDown={e => { e.preventDefault(); pick(a); }}
+              className={i === hi ? 'ai-pick-row ai-pick-on' : 'ai-pick-row'}
+            >
+              <span className="ai-pick-name">{a.name}</span>
+              {a.isDemo && <span className="ai-pick-tag">DEMO</span>}
+              <span className="ai-pick-num">#{a.accountNumber}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Composer */}
       <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end', minWidth: 0 }}>
         {/* A label, not a button that calls click() on a hidden input: iOS
@@ -909,8 +996,20 @@ export const AiSheet = () => {
             ref={boxRef}
             value={draft}
             rows={1}
-            onChange={e => setDraft(e.target.value)}
+            onChange={e => onDraft(e.target.value, e.target.selectionStart ?? e.target.value.length)}
             onKeyDown={e => {
+              // While the account list is up it owns the keys that move
+              // through it and the one that chooses. Enter picks here on a
+              // phone too: the list is only up because a "/" was typed, and
+              // a new line is not what that key is for at that moment.
+              if (picks.length > 0) {
+                if (e.key === 'Escape') { e.preventDefault(); setSlash(null); return; }
+                if (e.key === 'ArrowDown') { e.preventDefault(); setHi(h => (h + 1) % picks.length); return; }
+                if (e.key === 'ArrowUp') { e.preventDefault(); setHi(h => (h - 1 + picks.length) % picks.length); return; }
+                if ((e.key === 'Enter' && !e.shiftKey && !typing) || e.key === 'Tab') {
+                  e.preventDefault(); pick(picks[hi] ?? picks[0]); return;
+                }
+              }
               if (e.key !== 'Enter' || e.shiftKey || typing) return;
               // On a phone the return key writes a new line; there is a
               // SEND button an inch away. With a real keyboard Enter sends
@@ -923,7 +1022,15 @@ export const AiSheet = () => {
             onCompositionEnd={() => setTyping(false)}
             onFocus={() => setWriting(true)}
             onBlur={() => setWriting(false)}
-            placeholder={mic.listening ? t('ai.listening') : t('ai.ask_placeholder')}
+            // The "/" is worth nothing if only the person who asked for it
+            // knows it is there, and the placeholder is the one piece of
+            // text read by someone about to type. Only with more than one
+            // account: with one there is nothing to choose between.
+            placeholder={
+              mic.listening ? t('ai.listening')
+                : accounts.length > 1 ? t('ai.ask_placeholder_slash')
+                : t('ai.ask_placeholder')
+            }
             className="ai-box"
             style={{
               border: `1px solid ${mic.listening ? 'var(--danger)' : 'var(--border2)'}`,
@@ -1159,6 +1266,61 @@ export const AiSheet = () => {
           background: var(--bg-primary);
         }
         .ai-foot-kb { padding-bottom: 8px; }
+
+        /* The account list. It sits in the footer rather than floating
+           over the conversation, so it pushes the messages up instead of
+           covering the one being replied to, and it cannot end up behind
+           the phone keyboard. */
+        .ai-pick {
+          display: flex;
+          flex-direction: column;
+          max-height: 216px;
+          overflow-y: auto;
+          border: 1px solid var(--border2);
+          border-radius: var(--radius-sm);
+          background: var(--bg-card);
+        }
+        .ai-pick-row {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          width: 100%;
+          /* 44px is the smallest thing a thumb hits reliably, and this
+             list decides which account an order goes to. */
+          min-height: 44px;
+          padding: 8px 12px;
+          background: none;
+          border: 0;
+          border-bottom: 1px solid var(--border);
+          color: var(--text);
+          font-size: 15px;
+          text-align: left;
+          cursor: pointer;
+        }
+        .ai-pick-row:last-child { border-bottom: 0; }
+        .ai-pick-on { background: var(--bg-hover, rgba(255,255,255,0.06)); }
+        .ai-pick-name {
+          flex: 1;
+          min-width: 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .ai-pick-tag {
+          flex-shrink: 0;
+          font-size: 10px;
+          letter-spacing: 0.04em;
+          padding: 2px 6px;
+          border-radius: 999px;
+          border: 1px solid var(--border2);
+          color: var(--text-dim);
+        }
+        .ai-pick-num {
+          flex-shrink: 0;
+          font-variant-numeric: tabular-nums;
+          font-size: 13px;
+          color: var(--text-dim);
+        }
         /* Three dots that say the question is on its way. */
         .ai-dots { display: inline-flex; gap: 4px; align-items: center; }
         .ai-dots i {
