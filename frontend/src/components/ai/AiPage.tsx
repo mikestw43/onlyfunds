@@ -707,41 +707,10 @@ export const AiSheet = () => {
       {/* The conversation, and the only part that scrolls. Everything used
           to sit in here together, so a long conversation pushed the box to
           type in clean off the bottom of the screen. */}
-      <div className="ai-scroll" ref={scroller} onScroll={onScroll}>
+      {/* The scroller and anything that covers it. */}
+      <div className="ai-mid">
 
-        {/* What was asked before today. Tapping one brings it back. */}
-        {chats !== null && (
-          <div style={{ ...card, padding: '6px' }}>
-            <div style={{ ...lbl, padding: '6px 8px 8px' }}>{t('ai.past_chats')}</div>
-            {chats.length === 0 && (
-              <div style={{
-                padding: '6px 8px 12px', fontFamily: 'var(--ff-body)',
-                fontSize: 'var(--fs-body-sm)', color: 'var(--text-muted)',
-              }}>{t('ai.no_past_chats')}</div>
-            )}
-            {chats.map(c => (
-              <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <button
-                  onClick={() => void openChat(c.id)}
-                  className="ai-chat-row"
-                  style={c.id === chatId ? { color: 'var(--accent-blue)' } : undefined}
-                >
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.title}</span>
-                  <span style={{ color: 'var(--text-muted)', fontSize: 'var(--fs-micro)', flexShrink: 0 }}>
-                    {when(c.updatedAt)}
-                  </span>
-                </button>
-                <button
-                  onClick={() => void removeChat(c.id)}
-                  aria-label={t('common.delete')}
-                  title={t('common.delete')}
-                  className="ai-round"
-                  style={{ width: '30px', height: '30px', flexShrink: 0 }}
-                >✕</button>
-              </div>
-            ))}
-          </div>
-        )}
+      <div className="ai-scroll" ref={scroller} onScroll={onScroll}>
 
         {messages.length === 0 && (
           <div style={{ ...card, borderLeft: '2px solid var(--accent-blue)' }}>
@@ -890,6 +859,57 @@ export const AiSheet = () => {
         )}
 
         <div ref={endRef} />
+      </div>
+
+      {/* What was asked before today. Tapping one brings it back.
+
+          Over the conversation, not at the top of it. It used to be the
+          first thing inside the scroller, which looks the same until the
+          conversation is longer than the screen: then the panel opens
+          somewhere above where you are reading and tapping the clock
+          appears to do nothing at all. A panel is a mode, not a message,
+          so it goes where the eyes already are and closes on a tap
+          outside. */}
+      {chats !== null && (
+        <div
+          className="ai-hist"
+          onPointerDown={e => { if (e.target === e.currentTarget) setChats(null); }}
+        >
+          {chats !== null && (
+            <div style={{ ...card, padding: '6px' }}>
+              <div style={{ ...lbl, padding: '6px 8px 8px' }}>{t('ai.past_chats')}</div>
+              {chats.length === 0 && (
+                <div style={{
+                  padding: '6px 8px 12px', fontFamily: 'var(--ff-body)',
+                  fontSize: 'var(--fs-body-sm)', color: 'var(--text-muted)',
+                }}>{t('ai.no_past_chats')}</div>
+              )}
+              {chats.map(c => (
+                <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <button
+                    onClick={() => void openChat(c.id)}
+                    className="ai-chat-row"
+                    style={c.id === chatId ? { color: 'var(--accent-blue)' } : undefined}
+                  >
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.title}</span>
+                    <span style={{ color: 'var(--text-muted)', fontSize: 'var(--fs-micro)', flexShrink: 0 }}>
+                      {when(c.updatedAt)}
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => void removeChat(c.id)}
+                    aria-label={t('common.delete')}
+                    title={t('common.delete')}
+                    className="ai-round"
+                    style={{ width: '30px', height: '30px', flexShrink: 0 }}
+                  >✕</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       </div>
 
       {/* Back to the newest answer, from wherever the reading got to. */}
@@ -1250,6 +1270,23 @@ export const AiSheet = () => {
           flex-shrink: 0;
           display: flex; flex-direction: column; gap: 10px;
           padding: 4px 16px 10px;
+        }
+        /* Holds the scroller and whatever covers it, so a panel can
+           fill exactly the conversation's area and neither slide under
+           the header nor over the composer. */
+        .ai-mid {
+          position: relative;
+          flex: 1 1 auto; min-height: 0;
+          display: flex; flex-direction: column;
+        }
+        .ai-hist {
+          position: absolute;
+          inset: 0;
+          z-index: 6;
+          overflow-y: auto; overscroll-behavior: contain;
+          padding: 0 16px 8px;
+          background: rgba(0, 0, 0, 0.45);
+          backdrop-filter: blur(2px);
         }
         .ai-scroll {
           flex: 1 1 auto; min-height: 0;
