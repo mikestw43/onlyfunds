@@ -570,11 +570,30 @@ Credentials → OAuth client ของ OnlyFunds → **Authorized JavaScript ori
 โดนแฮก คนที่ได้เครื่องไปก็ลบสำเนาใน NAS ได้ด้วย ซึ่งเป็นสถานการณ์เดียว
 ที่เราทำสำรองไว้เพื่อรับมือพอดี
 
-### ขั้นที่ 1 — สร้างกุญแจที่ NAS
+### ขั้นที่ 0 — สร้างที่เก็บใน NAS
+
+**DSM → Control Panel → Shared Folder → Create** ตั้งชื่อ `WebBackup`
+(ไม่ต้องติ๊ก Recycle Bin, ไม่ต้องให้สิทธิ์ผู้ใช้คนไหน)
+
+โฟลเดอร์ย่อย `OnlyFunds` ไม่ต้องสร้างเอง คำสั่งในขั้นที่ 3 สร้างให้
+
+ได้ที่อยู่: **`/volume1/WebBackup/OnlyFunds`**
+(เช็คว่าเป็น volume1 จริงได้ที่ File Station → คลิกขวา → Properties)
+
+### ขั้นที่ 1 — สร้างกุญแจที่ NAS **ในฐานะ root**
 
 ใน DSM: **Control Panel → Terminal & SNMP → ติ๊ก Enable SSH service**
 
-แล้ว SSH เข้า NAS (จากคอม หรือใช้แอป Termius บนมือถือ) พิมพ์:
+SSH เข้า NAS (จากคอม หรือแอป Termius บนมือถือ) แล้ว **สลับเป็น root ก่อนเสมอ**:
+
+```
+sudo -i
+```
+
+> ⚠️ **ข้อนี้พลาดกันบ่อยที่สุด** — งานใน Task Scheduler รันในฐานะ root
+> ถ้าคุณสร้างกุญแจตอนเป็น user ธรรมดา กุญแจจะไปอยู่บ้านของ user คนนั้น
+> แล้ว root หาไม่เจอ → ตั้งอัตโนมัติแล้วมันจะล้มเหลวเงียบๆ ทั้งที่ลองมือ
+> เองผ่าน ทำทุกขั้นในฐานะ root ตั้งแต่ต้นจะไม่เจอปัญหานี้
 
 ```
 ssh-keygen -t ed25519
@@ -582,7 +601,7 @@ ssh-keygen -t ed25519
 กด Enter รวด 3 ครั้ง (ไม่ต้องใส่รหัส) แล้วดูกุญแจสาธารณะ:
 
 ```
-cat ~/.ssh/id_ed25519.pub
+cat /root/.ssh/id_ed25519.pub
 ```
 
 ก๊อปบรรทัดที่ขึ้นต้นด้วย `ssh-ed25519` ไว้ (ทั้งบรรทัด)
@@ -607,20 +626,23 @@ bash /opt/onlyfunds/deploy/nas-setup.sh
 
 ### ขั้นที่ 3 — ลองดึงครั้งแรกที่ NAS
 
-ที่ NAS สร้างโฟลเดอร์ปลายทางก่อน แล้วรันคำสั่งจากขั้นที่ 2:
+ที่ NAS — **ยังเป็น root อยู่** (ถ้าหลุดไปแล้วพิมพ์ `sudo -i` อีกที):
 
 ```
-mkdir -p /volume1/backup/onlyfunds
-rsync -az --delete -e ssh ofbackup@168.144.251.72:/ /volume1/backup/onlyfunds/
+mkdir -p /volume1/WebBackup/OnlyFunds
+rsync -az --delete -e ssh ofbackup@168.144.251.72:/ /volume1/WebBackup/OnlyFunds/
 ```
 
 ครั้งแรกจะถาม `Are you sure you want to continue connecting?` → พิมพ์ **yes**
 
+การตอบ yes ครั้งนี้คือเหตุผลที่ต้องทำในฐานะ root: มันจำลายนิ้วมือของ
+เซิร์ฟเวอร์ไว้ในบ้านของ root ซึ่งเป็นที่ที่ Task Scheduler จะไปหา
+
 เสร็จแล้วเช็คว่าได้ไฟล์มาจริง:
 
 ```
-ls -la /volume1/backup/onlyfunds/
-cat /volume1/backup/onlyfunds/latest.txt
+ls -la /volume1/WebBackup/OnlyFunds/
+cat /volume1/WebBackup/OnlyFunds/latest.txt
 ```
 
 ต้องเห็นไฟล์ `onlyfunds-<วันที่>.db.gz`, `uploads-<วันที่>.tar.gz`,
@@ -631,9 +653,13 @@ cat /volume1/backup/onlyfunds/latest.txt
 DSM → **Control Panel → Task Scheduler → Create → Scheduled Task →
 User-defined script**
 
-- **General:** ตั้งชื่อ `Pull OnlyFunds backup` · User = `root`
+- **General:** ตั้งชื่อ `Pull OnlyFunds backup` · **User = `root`** (สำคัญ)
 - **Schedule:** Daily · เวลา **04:00** (หลังเซิร์ฟเวอร์สำรองตอนตี 3)
-- **Task Settings → Run command:** วางบรรทัด rsync จากขั้นที่ 3
+- **Task Settings → Run command:** วางบรรทัดนี้
+
+```
+rsync -az --delete -e ssh ofbackup@168.144.251.72:/ /volume1/WebBackup/OnlyFunds/
+```
 - ติ๊ก **Send run details by email** เผื่อวันไหนพัง จะได้รู้
 
 กด OK แล้วเลือก task นั้น → **Run** เพื่อลองทันที
@@ -654,6 +680,16 @@ User-defined script**
 เซิร์ฟเวอร์เก็บไว้ 14 ชุดล่าสุด ส่วน NAS จะเก็บกี่ชุดก็ได้ — ถ้าอยากเก็บยาว
 ให้เอา `--delete` ออกจากคำสั่ง rsync
 
+### เปิด Snapshot ของโฟลเดอร์นี้ด้วย (แนะนำที่สุด)
+
+**DSM → Snapshot Replication → Snapshots → เลือก `WebBackup` → Settings**
+ตั้ง Daily เก็บย้อนหลัง 30 วัน
+
+rsync สะท้อนของจากเซิร์ฟเวอร์มาตรงๆ — วันที่ข้อมูลบนเซิร์ฟเวอร์เสียหาย
+หรือโดนเข้ารหัสเรียกค่าไถ่ มันจะก๊อปของเสียทับของดีใน NAS ทันที
+Snapshot คือชั้นที่กันเรื่องนั้น: ย้อนกลับไปเอาสภาพเมื่อ 3 วันก่อนได้ และ
+ฝั่งเซิร์ฟเวอร์ลบมันไม่ได้ กินที่เพิ่มน้อยมากเพราะเก็บเฉพาะส่วนต่าง
+
 ### วันที่ต้องกู้จริง
 
 ```
@@ -672,6 +708,12 @@ bash /opt/onlyfunds/deploy/restore.sh 20260927-030001
 
 ถ้า droplet หายทั้งเครื่อง: สร้างเครื่องใหม่ → ทำตาม README นี้ตั้งแต่ต้น →
 ก๊อปโฟลเดอร์จาก NAS กลับมาไว้ที่ `/opt/onlyfunds/backups/` → รัน `restore.sh`
+
+ส่งกลับจาก NAS ไปเครื่องใหม่ (รันที่ NAS ในฐานะ root):
+
+```
+rsync -az /volume1/WebBackup/OnlyFunds/ root@<ไอพีเครื่องใหม่>:/opt/onlyfunds/backups/
+```
 
 ### ลองซ้อมกู้สักครั้งตอนที่ยังไม่มีปัญหา
 
