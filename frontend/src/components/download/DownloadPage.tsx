@@ -22,7 +22,8 @@ const EA_RELEASES: EaRelease[] = [
       'Everything v1.3 does, plus closing part of a position and sending the ' +
       'contract figures the assistant needs to work out a position size — ' +
       'what a lot is worth, the volume steps, the live price and a 14-day ' +
-      'ATR. Source only for now: open it in MetaEditor and press Compile.',
+      'ATR. THE ONE TO INSTALL. Source only for now: open it in MetaEditor ' +
+      'and press Compile (F7) before it will appear in the Navigator.',
     downloads: [
       { platform: 'MT5', filename: 'OnlyFunds_Reporter_v1.4.mq5', ext: '.MQ5 SOURCE' },
     ],
@@ -31,9 +32,11 @@ const EA_RELEASES: EaRelease[] = [
     name: 'OnlyFunds Reporter',
     version: 'v1.3',
     description:
-      'Reports the account, and carries out dashboard orders when you switch ' +
-      'EnableTrading on (off by default). Take the .EX5 to install; the .MQ5 ' +
-      'is the source it was built from.',
+      'FALLBACK ONLY — kept because it is the newest build that installs ' +
+      'without compiling anything, so there is something to go back to if ' +
+      'v1.4 will not build or misbehaves. It is retired the moment a ' +
+      'compiled v1.4 is up here. Reports the account and carries out ' +
+      'dashboard orders when EnableTrading is on (off by default).',
     downloads: [
       { platform: 'MT5', filename: 'OnlyFunds_Reporter_v1.3.ex5', ext: '.EX5' },
       { platform: 'MT5', filename: 'OnlyFunds_Reporter_v1.3.mq5', ext: '.MQ5 SOURCE' },
@@ -42,7 +45,11 @@ const EA_RELEASES: EaRelease[] = [
   {
     name: 'OnlyFunds Reporter',
     version: 'v1.1',
-    description: 'Report-only, ready compiled. The version running today.',
+    description:
+      'Report-only, ready compiled. Superseded: v1.4 with EnableTrading off ' +
+      'reports the same things and adds the contract figures the assistant ' +
+      'needs before it will say anything about lot sizes. Keep this one only ' +
+      'for a terminal where compiling is not an option.',
     // MT4 has no compiled build yet, so it gets no button — a link to a
     // missing .ex4 would just 404.
     downloads: [
