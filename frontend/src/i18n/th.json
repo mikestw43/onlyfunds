@@ -361,7 +361,7 @@
   "ai.ctx_today": "วันนี้",
   "ai.ctx_history": "เทรด (30 วัน)",
   "ai.ask_placeholder": "ถามอะไรก็ได้…",
-  "ai.ask_placeholder_slash": "ถามอะไรก็ได้…   / = เลือกพอร์ต",
+  "ai.slash_hint": "พิมพ์ / เพื่อเลือกพอร์ต",
   "ai.pick_account": "เลือกพอร์ต",
   "ai.send": "ส่ง",
   "ai.suggest_today": "วันนี้ทำไมติดลบ",

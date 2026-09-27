@@ -731,6 +731,16 @@ export const AiSheet = () => {
                 >{c}</button>
               ))}
             </div>
+            {/* Only worth saying with something to choose between, and
+                only here: it goes away as soon as the conversation
+                starts, which is when it stops being news. */}
+            {accounts.length > 1 && (
+              <div style={{
+                marginTop: '12px',
+                fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-micro)',
+                color: 'var(--text-muted)',
+              }}>{t('ai.slash_hint')}</div>
+            )}
           </div>
         )}
 
@@ -1042,15 +1052,10 @@ export const AiSheet = () => {
             onCompositionEnd={() => setTyping(false)}
             onFocus={() => setWriting(true)}
             onBlur={() => setWriting(false)}
-            // The "/" is worth nothing if only the person who asked for it
-            // knows it is there, and the placeholder is the one piece of
-            // text read by someone about to type. Only with more than one
-            // account: with one there is nothing to choose between.
-            placeholder={
-              mic.listening ? t('ai.listening')
-                : accounts.length > 1 ? t('ai.ask_placeholder_slash')
-                : t('ai.ask_placeholder')
-            }
+            // Short. The hint about "/" lives in the opening card, where
+            // there is room for it: in here it wrapped to a second line
+            // and spilled out of a box one row high.
+            placeholder={mic.listening ? t('ai.listening') : t('ai.ask_placeholder')}
             className="ai-box"
             style={{
               border: `1px solid ${mic.listening ? 'var(--danger)' : 'var(--border2)'}`,
