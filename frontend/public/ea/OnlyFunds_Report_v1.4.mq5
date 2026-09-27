@@ -120,38 +120,58 @@ const string OF_BUILD = "1.4-report";
 CTrade g_trade;
 #endif
 
+//+------------------------------------------------------------------+
+//| WHAT YOU SET, AND WHAT IS ALREADY SETTLED                        |
+//|                                                                  |
+//| Only what actually differs from one account to the next is a     |
+//| setting. Everything else is fixed below.                         |
+//|                                                                  |
+//| Every value here was a setting once, and not one of them ever    |
+//| needed changing — they just made the Inputs tab long enough to   |
+//| be frightening, which costs more than it ever saved. A number    |
+//| that should be the same on every account is not a decision to    |
+//| hand to whoever is attaching the EA at the time.                 |
+//|                                                                  |
+//| To change one: edit the line and recompile. That is deliberately |
+//| more work than editing a box, because these should not vary.     |
+//+------------------------------------------------------------------+
+
 //--- Input Parameters
-input string   ApiKey         = "";           // API Key * (get from Dashboard → Accounts)
-input string   ServerURL      = "https://onlyfunds.duckdns.org"; // Server URL
-input int      UpdateInterval = 2;            // Update interval (seconds)
-input int      SymbolListMinutes = 60;        // Re-send the broker's symbol list every N minutes
-input bool     MarketWatchOnly = false;       // true = only symbols in Market Watch
-input bool     VerboseLog      = true;        // Write every decision to the Experts log
+input string   ApiKey      = "";              // API Key * (get from Dashboard → Accounts)
+input string   ServerURL   = "https://onlyfunds.duckdns.org"; // Server URL
+input string   SpecSymbols = "";              // Optional. Symbols to watch even with nothing open: "XAGUSD,EURUSD"
 
 #ifdef ONLYFUNDS_AI
-//--- Trading (all of this is off until you say otherwise)
 input group    "=== Trading — read before switching on ==="
-input bool     EnableTrading      = false;    // MASTER SWITCH. false = report only, exactly like v1.2
-input double   MaxLotsPerOrder    = 0.10;     // Refuse any order larger than this, whatever the server says
-input int      MaxOrdersPerHour   = 10;       // Refuse more than this many executions in a rolling hour
-input string   AllowedSymbols     = "";       // "" = any. Otherwise a list: "XAUUSD.v,EURUSD"
-input int      CommandMaxAgeSec   = 60;       // Ignore a command older than this (the price has moved on)
-input bool     AllowManageForeign = true;     // Close/modify positions opened by other EAs on this account
-input string   ForeignMagicBlock  = "";       // Magic numbers this EA must never touch: "12345,67890"
-input bool     AllowCloseAll      = true;     // Allow the dashboard's CLOSE ALL button
-input int      MagicNumber        = 990001;   // Stamped on orders opened from the dashboard
-input int      MaxSlippagePoints  = 20;       // Deviation allowed when filling
-input int      RetryCount         = 2;        // Retries on requote / price change
+input bool     EnableTrading    = false;      // MASTER SWITCH. false = report only
+input double   MaxLotsPerOrder  = 0.10;       // Refuse any order larger than this, whatever the server says
+input int      MaxOrdersPerHour = 10;         // Refuse more than this many executions in a rolling hour
 #else
 //--- OnlyFunds Report build. Nothing reads this but the lines that report
 //--- the build's own state; there is no trading code here to switch on.
-const bool     EnableTrading      = false;
+const bool     EnableTrading    = false;
 #endif
 
-input group    "=== What the dashboard is told about symbols ==="
-input int      SpecsMinutes       = 5;        // Re-send contract specs and ATR every N minutes (0 = off)
-input string   SpecSymbols        = "";       // Extra symbols: "XAGUSD,EURUSD" — no need for the broker's suffix
-input int      SpecsMaxSymbols    = 25;       // Never send more than this many, whatever is open
+//--- Settled: the same on every account, so not worth asking about.
+const int      UpdateInterval    = 2;         // Seconds between pushes
+const int      SymbolListMinutes = 60;        // Re-send the broker's symbol list every N minutes
+const bool     MarketWatchOnly   = false;     // true = only symbols in Market Watch
+const bool     VerboseLog        = true;      // Write every decision to the Experts log
+const int      SpecsMinutes      = 5;         // Re-send contract specs and ATR every N minutes
+const int      SpecsMaxSymbols   = 25;        // Never send more than this many, whatever is open
+
+#ifdef ONLYFUNDS_AI
+//--- Settled, trading side. The two that are worth deciding per account
+//--- — how big an order may be, and how many in an hour — are inputs above.
+const string   AllowedSymbols     = "";       // "" = any
+const int      CommandMaxAgeSec   = 60;       // Ignore a command older than this (the price has moved on)
+const bool     AllowManageForeign = true;     // Close/modify positions opened by other EAs on this account
+const string   ForeignMagicBlock  = "";       // Magic numbers this EA must never touch
+const bool     AllowCloseAll      = true;     // Allow the dashboard's CLOSE ALL button
+const int      MagicNumber        = 990001;   // Stamped on orders opened from the dashboard
+const int      MaxSlippagePoints  = 20;       // Deviation allowed when filling
+const int      RetryCount         = 2;        // Retries on requote / price change
+#endif
 
 //--- Globals
 datetime g_lastSend       = 0;
