@@ -151,7 +151,7 @@ const bool     EnableTrading      = false;
 
 input group    "=== What the dashboard is told about symbols ==="
 input int      SpecsMinutes       = 5;        // Re-send contract specs and ATR every N minutes (0 = off)
-input string   SpecSymbols        = "";       // Extra symbols to send specs for: "XAGUSD,EURUSD"
+input string   SpecSymbols        = "";       // Extra symbols: "XAGUSD,EURUSD" — no need for the broker's suffix
 input int      SpecsMaxSymbols    = 25;       // Never send more than this many, whatever is open
 
 //--- Globals
@@ -495,6 +495,50 @@ bool AlreadyListed(const string &list[], const int count, const string sym)
 //| SpecSymbols. Sent every SpecsMinutes — they change rarely, but   |
 //| bid and ask do not, so it is not sent once and forgotten.        |
 //+------------------------------------------------------------------+
+//+------------------------------------------------------------------+
+//| The broker's own name for a symbol typed plainly.                |
+//|                                                                  |
+//| Brokers suffix everything and they all pick a different suffix:  |
+//| XAUUSD is XAUUSD.sc at one, XAUUSD.v at the next. Typing XAGUSD  |
+//| here matched nothing and was skipped in silence — a setting that |
+//| quietly does nothing is worse than one that refuses, because the |
+//| only symptom is the assistant saying it does not know a figure   |
+//| it was supposed to have been given.                              |
+//|                                                                  |
+//| So: try the name as written, and failing that take the shortest  |
+//| symbol the broker offers that starts with it. Shortest, so that  |
+//| XAUUSD finds XAUUSD.sc rather than XAUUSD.sc.spread or whatever  |
+//| else happens to share the prefix.                                |
+//+------------------------------------------------------------------+
+string ResolveSymbol(string wanted)
+{
+   if(wanted == "") return "";
+   if(SymbolSelect(wanted, true)) return wanted;
+
+   string upper = wanted;
+   StringToUpper(upper);
+
+   string best = "";
+   int total = SymbolsTotal(false);
+   for(int i = 0; i < total; i++)
+   {
+      string name = SymbolName(i, false);
+      string cmp  = name;
+      StringToUpper(cmp);
+      if(StringFind(cmp, upper) != 0) continue;
+      if(best == "" || StringLen(name) < StringLen(best)) best = name;
+   }
+
+   if(best != "" && SymbolSelect(best, true))
+   {
+      if(VerboseLog) Print("OnlyFunds: ", wanted, " is ", best, " at this broker");
+      return best;
+   }
+
+   Print("OnlyFunds: no symbol here matches \"", wanted, "\" — check Market Watch for its real name");
+   return "";
+}
+
 string BuildSpecsJson()
 {
    if(SpecsMinutes <= 0) return "";
@@ -537,8 +581,8 @@ string BuildSpecsJson()
       {
          string sym = extra[i];
          StringTrimLeft(sym); StringTrimRight(sym);
+         sym = ResolveSymbol(sym);
          if(sym == "" || AlreadyListed(names, count, sym)) continue;
-         if(!SymbolSelect(sym, true)) continue;
          ArrayResize(names, count + 1); names[count++] = sym;
       }
    }
