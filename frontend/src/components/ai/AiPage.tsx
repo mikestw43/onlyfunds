@@ -1145,8 +1145,12 @@ export const AiSheet = () => {
            at a time, so it gets a reading size of its own. */
         .ai-msg {
           font-family: var(--ff-body);
-          font-size: 16.5px;
-          line-height: 1.7;
+          /* 16.5 was the answer to text nobody could read; it overshot.
+             15 still clears what a phone needs to be comfortable and puts
+             a couple more lines on screen, which is what a conversation
+             this long is short of. */
+          font-size: 15px;
+          line-height: 1.65;
         }
         .ai-msg strong { color: var(--text); }
         /* The four openers are read and tapped, so they are sized to be
