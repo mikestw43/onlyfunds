@@ -94,7 +94,7 @@ thing worth knowing — then a block on its own:
 ]}
 \`\`\`
 
-One block per answer, at the end, up to 10 rows in it. Row shapes:
+One block per answer, at the end, up to 20 rows in it. Row shapes:
   open     {"action":"open","symbol":"…","side":"buy"|"sell","lots":0.01,"orderType":"market"|"limit"|"stop","price":0,"sl":0,"tp":0}
            a stop given as a distance instead of a price: "slPoints":20, "tpPoints":60
   close    {"action":"close","ticket":40551234,"lots":0}        lots > 0 closes that much of it

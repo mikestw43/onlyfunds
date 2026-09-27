@@ -87,7 +87,13 @@ export const readPlan = (text: string): { plan: Plan | null; rest: string } => {
     if (typeof parsed.account !== 'string') continue;
 
     const rows = Array.isArray(parsed.orders)
-      ? parsed.orders.map(asRow).filter((r): r is Row => !!r).slice(0, 10)
+      // Twenty, because a grid is the reason anyone writes more than one
+      // row at a time and ten stopped one entry plus a ten-leg ladder —
+      // the shape that was actually asked for. The cap is not the guard
+      // anyway: the card prices every row against the terminal and shows
+      // what the lot goes to if they all stop, and nothing is sent until
+      // that has been read and the button pressed.
+      ? parsed.orders.map(asRow).filter((r): r is Row => !!r).slice(0, 20)
       : [asRow(parsed)].filter((r): r is Row => !!r);
 
     if (rows.length === 0) continue;
