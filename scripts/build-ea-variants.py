@@ -11,12 +11,12 @@ forgotten, which for the build that sits on the LIVE accounts is not a
 risk worth taking for the sake of avoiding one script.
 
 The master is ea/OnlyFunds_Reporter_v1.4.mq5 and it compiles as-is (as
-the Report Only build). The AI build is the same file with ONLYFUNDS_AI
-defined at the top, so the trading code is compiled in.
+the OnlyFunds Report build). The AI build is the same file with
+ONLYFUNDS_AI defined at the top, so the trading code is compiled in.
 
 MetaEditor is the only thing that can really compile MQL5, and it is not
 available here, so --check runs the preprocessor itself and then makes
-sure the Report Only build says nothing about anything it no longer
+sure the OnlyFunds Report build says nothing about anything it no longer
 contains: no trade object, no trade call, no command handler.
 """
 import re
@@ -29,25 +29,29 @@ OUT_DIR = ROOT / 'frontend' / 'public' / 'ea'
 
 FLAG = 'ONLYFUNDS_AI'
 
+# The two names have to be told apart at a glance in the MT5 Navigator,
+# where they sit next to each other and one of them can trade. "Report
+# with AI" and "Report Only" differed by a single word, which is how the
+# trading build ends up on a live account by mistake.
 VARIANTS = {
-    'OnlyFunds_ReportOnly_v1.4.mq5': {
+    'OnlyFunds_Report_v1.4.mq5': {
         'ai': False,
-        'title': 'OnlyFunds Report Only v1.4',
+        'title': 'OnlyFunds Report v1.4',
         'blurb': 'Reports this account to the dashboard. It contains no trading\n'
                  '// code at all: there is no setting to switch on, and nothing the\n'
                  '// server sends can make it place, change or close an order.\n'
                  '// This is the one for accounts where real money is working.',
     },
-    'OnlyFunds_ReportAI_v1.4.mq5': {
+    'OnlyFunds_AI_v1.4.mq5': {
         'ai': True,
-        'title': 'OnlyFunds Report with AI v1.4',
+        'title': 'OnlyFunds AI v1.4',
         'blurb': 'Reports this account AND carries out the orders the dashboard\n'
                  '// sends, once you set EnableTrading = true on its chart. Start\n'
                  '// it on a demo account.',
     },
 }
 
-# Nothing from the trading half may survive into the Report Only build.
+# Nothing from the trading half may survive into the OnlyFunds Report build.
 FORBIDDEN_IN_REPORT_ONLY = [
     'g_trade', 'CTrade', 'Trade/Trade.mqh',
     'HandleCommands', 'DoOpenTrade', 'DoClosePosition', 'DoSetSlTp',
@@ -162,7 +166,7 @@ def check(master: str) -> list:
             for word in FORBIDDEN_IN_REPORT_ONLY:
                 if re.search(r'\b' + re.escape(word) + r'\b', code):
                     problems.append(f'{name}: still contains {word!r} — '
-                                    f'the Report Only build must not')
+                                    f'the OnlyFunds Report build must not')
             if 'const bool     EnableTrading' not in body:
                 problems.append(f'{name}: EnableTrading is not defined')
             if '"1.4-report"' not in body:

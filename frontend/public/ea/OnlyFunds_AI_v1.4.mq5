@@ -1,14 +1,15 @@
 //+------------------------------------------------------------------+
-//| OnlyFunds Report Only v1.4                                       |
+//| OnlyFunds AI v1.4                                                |
 //|                                                                  |
 //| GENERATED FILE - do not edit.                                    |
 //| Source: ea/OnlyFunds_Reporter_v1.4.mq5                           |
 //| Rebuild: python3 scripts/build-ea-variants.py                    |
 //+------------------------------------------------------------------+
-// Reports this account to the dashboard. It contains no trading
-// code at all: there is no setting to switch on, and nothing the
-// server sends can make it place, change or close an order.
-// This is the one for accounts where real money is working.
+// Reports this account AND carries out the orders the dashboard
+// sends, once you set EnableTrading = true on its chart. Start
+// it on a demo account.
+
+#define ONLYFUNDS_AI 1
 
 //+------------------------------------------------------------------+
 //|                                      OnlyFunds_Reporter_v1.4.mq5 |
@@ -85,11 +86,11 @@
 //|  Two EAs come out of this one file, built by                     |
 //|  scripts/build-ea-variants.py:                                   |
 //|                                                                  |
-//|    ONLYFUNDS_AI defined -> "OnlyFunds Report with AI"            |
+//|    ONLYFUNDS_AI defined -> "OnlyFunds AI"                        |
 //|        Reports, and carries out dashboard commands once          |
 //|        EnableTrading is switched on.                             |
 //|                                                                  |
-//|    not defined          -> "OnlyFunds Report Only"               |
+//|    not defined          -> "OnlyFunds Report"                    |
 //|        The trading code is not compiled into it at all. There is |
 //|        no switch to find, and no server, no command and no       |
 //|        mistake can make this build place an order. That is a     |
@@ -102,9 +103,9 @@
 #property copyright "OnlyFunds"
 #property version   "1.4"
 #ifdef ONLYFUNDS_AI
-#property description "OnlyFunds Report with AI v1.4: reports the account, and carries out dashboard commands when EnableTrading is on"
+#property description "OnlyFunds AI v1.4: reports the account, and carries out dashboard commands when EnableTrading is on"
 #else
-#property description "OnlyFunds Report Only v1.4: reports the account. The trading code is not in this build - it cannot place an order."
+#property description "OnlyFunds Report v1.4: reports the account. The trading code is not in this build - it cannot place an order."
 #endif
 
 //--- Named once, so the log line, the banner and the eaVersion the server
@@ -143,8 +144,8 @@ input int      MagicNumber        = 990001;   // Stamped on orders opened from t
 input int      MaxSlippagePoints  = 20;       // Deviation allowed when filling
 input int      RetryCount         = 2;        // Retries on requote / price change
 #else
-//--- Report Only build. Nothing reads this but the lines that report the
-//--- build's own state; there is no trading code here to switch on.
+//--- OnlyFunds Report build. Nothing reads this but the lines that report
+//--- the build's own state; there is no trading code here to switch on.
 const bool     EnableTrading      = false;
 #endif
 
@@ -1254,7 +1255,7 @@ void SendData()
       "\"canExecute\":%s,"
       "\"canPartialClose\":true,"
 #else
-      // Report Only. canExecute is formatted from EnableTrading, a const
+      // OnlyFunds Report. canExecute is formatted from EnableTrading, a const
       // false here, so the server is told plainly that nothing it sends
       // would be carried out — and the suffix tells it why, so it can say
       // "install the other build" rather than "switch trading on", which
@@ -1296,7 +1297,7 @@ void SendData()
 #ifdef ONLYFUNDS_AI
          Print("  Trading: ", EnableTrading ? "ON — this EA will carry out dashboard commands" : "off (EnableTrading is false)");
 #else
-         Print("  Trading: not in this build — this is Report Only");
+         Print("  Trading: not in this build — this is OnlyFunds Report");
 #endif
          g_initDone = true;
       }

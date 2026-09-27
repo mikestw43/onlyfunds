@@ -16,7 +16,7 @@ type EaRelease = {
 /** EA catalog — one entry per EA, with both platform variants inside. */
 const EA_RELEASES: EaRelease[] = [
   {
-    name: 'OnlyFunds Report with AI',
+    name: 'OnlyFunds AI',
     version: 'v1.4',
     description:
       'Reports the account AND carries out the orders the dashboard sends, ' +
@@ -26,11 +26,11 @@ const EA_RELEASES: EaRelease[] = [
       'first. Source: compile it in MetaEditor (F7) before it appears in the ' +
       'Navigator.',
     downloads: [
-      { platform: 'MT5', filename: 'OnlyFunds_ReportAI_v1.4.mq5', ext: '.MQ5 SOURCE' },
+      { platform: 'MT5', filename: 'OnlyFunds_AI_v1.4.mq5', ext: '.MQ5 SOURCE' },
     ],
   },
   {
-    name: 'OnlyFunds Report Only',
+    name: 'OnlyFunds Report',
     version: 'v1.4',
     description:
       'The same reporting and the same contract figures, with the trading ' +
@@ -39,7 +39,7 @@ const EA_RELEASES: EaRelease[] = [
       'change or close an order. This is the one for accounts where real ' +
       'money is working. Source: compile it in MetaEditor (F7) first.',
     downloads: [
-      { platform: 'MT5', filename: 'OnlyFunds_ReportOnly_v1.4.mq5', ext: '.MQ5 SOURCE' },
+      { platform: 'MT5', filename: 'OnlyFunds_Report_v1.4.mq5', ext: '.MQ5 SOURCE' },
     ],
   },
   {
