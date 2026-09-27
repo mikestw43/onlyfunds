@@ -512,7 +512,11 @@ router.delete('/chats/:id/from/:messageId', async (req: AuthRequest, res: Respon
 // figures — and, once a model is answering, so a wrong answer can be traced
 // to what it was given.
 router.get('/context', async (req: AuthRequest, res: Response) => {
-  const accounts = runtimeStore.getAccountsByUser(req.user!.id).filter(a => !a.isDemo);
+  // Every account, demo included. This endpoint exists to show what the
+  // assistant is looking at, and the assistant is given the demo ones too —
+  // marked as practice money, because demo is where orders get tried out.
+  // Hiding them here made it a picture of something nobody is looking at.
+  const accounts = runtimeStore.getAccountsByUser(req.user!.id);
 
   const openOrders = accounts.flatMap(a =>
     (a.orders ?? []).map(o => ({ ...o, account: a.name, currency: a.currency })));
