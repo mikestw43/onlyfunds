@@ -403,6 +403,8 @@ export const receiveMT5Push = (req: Request, res: Response): void => {
       if (cmd.price    != null) c.price   = cmd.price;
       if (cmd.sl       != null) c.sl      = cmd.sl;
       if (cmd.tp       != null) c.tp      = cmd.tp;
+      if (cmd.slPoints != null) c.slPoints = cmd.slPoints;
+      if (cmd.tpPoints != null) c.tpPoints = cmd.tpPoints;
       if (cmd.comment  != null) c.comment = cmd.comment;
       if (cmd.ticket   != null) c.ticket  = cmd.ticket;
       return c;

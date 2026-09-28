@@ -133,6 +133,9 @@ export const openTrade = async (
     price?: number;
     sl?: number;
     tp?: number;
+    /** A stop as a distance; the EA measures it from the price it fills at. */
+    slPoints?: number;
+    tpPoints?: number;
   },
 ) => {
   const res = await api.post(`/accounts/${accountId}/open-trade`, data);

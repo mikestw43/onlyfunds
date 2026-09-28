@@ -152,19 +152,22 @@ export const OrderDraftCard = ({ plan }: { plan: Plan }) => {
     }))).then(r => {
       if (!alive) return;
       setRisk(r);
-      // A distance came back as a price. Put it on the row, so the field
-      // shows what will actually be sent and can be corrected — and so
-      // nothing downstream has to know about points at all.
+      // Show what the distance comes to, so there is a price to check
+      // against — but keep the distance itself on the row. A market order
+      // carries it all the way to the EA, which measures it from the price
+      // it actually fills at; this preview is against the last quote and
+      // will be a little out by the time it fills, which is the whole
+      // reason the distance travels rather than the price.
       setRows(list => {
         let changed = false;
         const next = list.map(row => {
           if (!row.slPoints && !row.tpPoints) return row;
           const priced = r.rows[list.filter(x => x.action === 'open').indexOf(row)];
           if (!priced) return row;
+          if ((priced.sl ?? 0) === (row.sl ?? 0) && (priced.tp ?? 0) === (row.tp ?? 0)) return row;
           changed = true;
-          const { slPoints, tpPoints, ...rest } = row;
           return {
-            ...rest,
+            ...row,
             ...(priced.sl ? { sl: priced.sl } : {}),
             ...(priced.tp ? { tp: priced.tp } : {}),
           };
@@ -191,8 +194,10 @@ export const OrderDraftCard = ({ plan }: { plan: Plan }) => {
             volume: r.lots ?? 0,
             orderType: r.orderType ?? 'market',
             ...(r.orderType && r.orderType !== 'market' ? { price: r.price ?? 0 } : {}),
-            ...(r.sl ? { sl: r.sl } : {}),
-            ...(r.tp ? { tp: r.tp } : {}),
+            // The distance wins where it survives: only a market order
+            // gains anything from it, and only until someone types a price.
+            ...(r.slPoints ? { slPoints: r.slPoints } : r.sl ? { sl: r.sl } : {}),
+            ...(r.tpPoints ? { tpPoints: r.tpPoints } : r.tp ? { tp: r.tp } : {}),
           })).commandId;
         } else if (r.action === 'close') {
           commandId = (await closePosition(account.id, r.ticket ?? 0, r.lots)).commandId;
@@ -246,7 +251,16 @@ export const OrderDraftCard = ({ plan }: { plan: Plan }) => {
   }, [auto, account?.id]);
 
   const edit = (i: number, field: keyof Row, value: string) => {
-    setRows(list => list.map((r, k) => (k === i ? { ...r, [field]: field === 'symbol' ? value : Number(value) } : r)));
+    setRows(list => list.map((r, k) => {
+      if (k !== i) return r;
+      const next: Row = { ...r, [field]: field === 'symbol' ? value : Number(value) };
+      // Typing a stop means that stop, at that price. Keeping the distance
+      // as well would have the EA recompute it from the fill and quietly
+      // overwrite what was just typed.
+      if (field === 'sl') delete next.slPoints;
+      if (field === 'tp') delete next.tpPoints;
+      return next;
+    }));
     setRisk(null);
   };
 

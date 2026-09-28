@@ -18,6 +18,17 @@ export interface Command {
   price?: number;   // 0 = market order, otherwise the pending order's price
   sl?: number;
   tp?: number;
+  /**
+   * A stop or target given as a distance in points instead of a price.
+   *
+   * Carried as a distance the whole way so the EA can measure it from the
+   * price the order actually gets. Worked out into a price anywhere before
+   * that and it is measured against a quote the market has already left —
+   * which on a twenty-point stop is the difference between a valid order
+   * and one the broker refuses.
+   */
+  slPoints?: number;
+  tpPoints?: number;
   comment?: string;
   // CLOSE_POSITION / SET_SLTP fields
   ticket?: number;

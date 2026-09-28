@@ -169,7 +169,7 @@ router.post('/:id/close-all', (req: AuthRequest, res: Response) => {
 // POST /api/accounts/:id/open-trade — queue an open trade command to the EA
 router.post('/:id/open-trade', (req: AuthRequest, res: Response) => {
   const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-  const { symbol, action, volume, orderType, price, sl, tp } = req.body as {
+  const { symbol, action, volume, orderType, price, sl, tp, slPoints, tpPoints } = req.body as {
     symbol: string;
     action: 'BUY' | 'SELL';
     volume: number;
@@ -177,6 +177,9 @@ router.post('/:id/open-trade', (req: AuthRequest, res: Response) => {
     price?: number;
     sl?: number;
     tp?: number;
+    /** A stop as a distance. The EA measures it from the price it fills at. */
+    slPoints?: number;
+    tpPoints?: number;
   };
 
   if (!symbol || !action || !volume) {
@@ -233,6 +236,10 @@ router.post('/:id/open-trade', (req: AuthRequest, res: Response) => {
     price: kind === 'market' ? 0 : price ?? 0,
     sl: sl ?? 0,
     tp: tp ?? 0,
+    // A distance stays a distance. The EA turns it into a price against
+    // the fill, which is the only price that is certainly true.
+    ...(slPoints && slPoints > 0 ? { slPoints } : {}),
+    ...(tpPoints && tpPoints > 0 ? { tpPoints } : {}),
     // Fixed on purpose. The comment is how a position opened from here is
     // recognised in MT5; letting it be edited only creates positions nobody
     // can account for later.
@@ -241,7 +248,8 @@ router.post('/:id/open-trade', (req: AuthRequest, res: Response) => {
 
   logCommandQueued(cmd.id, id, req.user!.id, 'OPEN_TRADE',
     `${action} ${volume} ${symbol}${kind === 'market' ? '' : ` ${kind} @ ${price}`}` +
-    `${sl ? ` SL ${sl}` : ''}${tp ? ` TP ${tp}` : ''}`);
+    `${slPoints ? ` SL ${slPoints}pts` : sl ? ` SL ${sl}` : ''}` +
+    `${tpPoints ? ` TP ${tpPoints}pts` : tp ? ` TP ${tp}` : ''}`);
   logAudit(req.user!.id, 'open_trade', 'account', id,
     JSON.stringify({ symbol, action, volume, orderType: kind, price, sl, tp }));
 

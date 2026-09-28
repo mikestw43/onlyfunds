@@ -139,7 +139,7 @@ CTrade g_trade;
 //--- Input Parameters
 input string   ApiKey      = "";              // API Key * (get from Dashboard → Accounts)
 input string   ServerURL   = "https://onlyfunds.duckdns.org"; // Server URL
-input string   SpecSymbols = "";              // Optional. Symbols to watch even with nothing open: "XAGUSD,EURUSD"
+input string   SpecSymbols = "";              // Also price these, with nothing open: "XAUUSD,XAGUSD"
 
 #ifdef ONLYFUNDS_AI
 input group    "=== Trading — read before switching on ==="
@@ -157,7 +157,7 @@ const int      UpdateInterval    = 2;         // Seconds between pushes
 const int      SymbolListMinutes = 60;        // Re-send the broker's symbol list every N minutes
 const bool     MarketWatchOnly   = false;     // true = only symbols in Market Watch
 const bool     VerboseLog        = true;      // Write every decision to the Experts log
-const int      SpecsMinutes      = 5;         // Re-send contract specs and ATR every N minutes
+const int      SpecsMinutes      = 1;         // Re-send contract specs and ATR every N minutes
 const int      SpecsMaxSymbols   = 25;        // Never send more than this many, whatever is open
 
 #ifdef ONLYFUNDS_AI
@@ -558,6 +558,27 @@ string ResolveSymbol(string wanted)
    return "";
 }
 
+/**
+ * A price N points away from an entry, on the side a stop belongs.
+ *
+ * "SL 20 points" is a distance, and turning it into a price needs to
+ * happen against a price that is actually true — which, for a market
+ * order, is the one it filled at and nothing else. Worked out anywhere
+ * earlier and it is worked out against a price the market has already
+ * left, and on a 20-point stop that is enough to land it on the wrong
+ * side of the entry and have the order refused.
+ */
+double AwayFrom(string sym, double entry, double points, bool buy, bool isStop)
+{
+   if(points <= 0 || entry <= 0) return 0.0;
+   double pt = SymbolInfoDouble(sym, SYMBOL_POINT);
+   int    dg = (int)SymbolInfoInteger(sym, SYMBOL_DIGITS);
+   if(pt <= 0) return 0.0;
+   // A buy's stop sits below it and its target above; a sell is the mirror.
+   bool below = (isStop == buy);
+   return NormalizeDouble(below ? entry - points * pt : entry + points * pt, dg);
+}
+
 string BuildSpecsJson()
 {
    if(SpecsMinutes <= 0) return "";
@@ -591,7 +612,19 @@ string BuildSpecsJson()
       ArrayResize(names, count + 1); names[count++] = sym;
    }
 
-   // Then whatever was asked for by hand.
+   // Then everything in Market Watch. That window is the list of symbols
+   // this person actually looks at — they curated it themselves — so it is
+   // a better answer to "what might they ask about" than a text box they
+   // have to know exists and remember to fill in.
+   int watch = SymbolsTotal(true);
+   for(int i = 0; i < watch && count < cap; i++)
+   {
+      string sym = SymbolName(i, true);
+      if(sym == "" || AlreadyListed(names, count, sym)) continue;
+      ArrayResize(names, count + 1); names[count++] = sym;
+   }
+
+   // And last, anything named by hand that is not even in Market Watch.
    if(StringLen(SpecSymbols) > 0)
    {
       string extra[];
@@ -896,6 +929,11 @@ void DoOpenTrade(string cmd, string id)
    double price  = JsonNum(cmd, "price");
    double sl     = JsonNum(cmd, "sl");
    double tp     = JsonNum(cmd, "tp");
+   // A stop given as a distance. Kept as one all the way to here so it can
+   // be measured from the price this order actually gets, not from a quote
+   // that was current when the question was asked.
+   double slPts  = JsonNum(cmd, "slPoints");
+   double tpPts  = JsonNum(cmd, "tpPoints");
    string note   = JsonStr(cmd, "comment");
    if(kind == "") kind = (price > 0 ? "limit" : "market");
    if(note == "") note = "OnlyFunds";
@@ -926,14 +964,29 @@ void DoOpenTrade(string cmd, string id)
    bool buy = (action == "BUY");
    bool ok  = false;
 
+   // A pending order knows where it will open: the price is the entry, so
+   // the distance can be turned into a price right now.
+   if(kind != "market" && price > 0)
+   {
+      if(slPts > 0) sl = AwayFrom(sym, price, slPts, buy, true);
+      if(tpPts > 0) tp = AwayFrom(sym, price, tpPts, buy, false);
+   }
+
+   // A market order does not. Open it bare and set the stops from the fill
+   // a moment later — a few milliseconds without a stop, against a stop in
+   // the wrong place or an order the broker refuses outright.
+   bool fromFill = (kind == "market" && (slPts > 0 || tpPts > 0));
+   double sendSl = fromFill ? 0.0 : sl;
+   double sendTp = fromFill ? 0.0 : tp;
+
    for(int attempt = 0; attempt <= RetryCount && !ok; attempt++)
    {
       if(attempt > 0) Sleep(400);
 
       if(kind == "market")
       {
-         ok = buy ? g_trade.Buy(vol, sym, 0.0, sl, tp, note)
-                  : g_trade.Sell(vol, sym, 0.0, sl, tp, note);
+         ok = buy ? g_trade.Buy(vol, sym, 0.0, sendSl, sendTp, note)
+                  : g_trade.Sell(vol, sym, 0.0, sendSl, sendTp, note);
       }
       else if(kind == "limit")
       {
@@ -961,7 +1014,47 @@ void DoOpenTrade(string cmd, string id)
    if(ok)
    {
       RememberExecution();
-      Ack(id, true, "opened", g_trade.ResultOrder());
+      string detail = "opened";
+
+      if(fromFill)
+      {
+         // The position's own opening price, not the deal's — it is what
+         // the terminal will measure the stop against.
+         ulong  posT = g_trade.ResultOrder();
+         double fill = 0.0;
+         if(PositionSelectByTicket(posT))
+            fill = PositionGetDouble(POSITION_PRICE_OPEN);
+         else if(PositionSelect(sym))
+         {
+            // A netting account folds the fill into one position per symbol.
+            posT = (ulong)PositionGetInteger(POSITION_TICKET);
+            fill = PositionGetDouble(POSITION_PRICE_OPEN);
+         }
+
+         if(fill <= 0)
+            detail = "opened, but the fill price could not be read — no stop was set";
+         else
+         {
+            double nsl = slPts > 0 ? AwayFrom(sym, fill, slPts, buy, true)  : 0.0;
+            double ntp = tpPts > 0 ? AwayFrom(sym, fill, tpPts, buy, false) : 0.0;
+            if(g_trade.PositionModify(posT, nsl, ntp))
+            {
+               int dg = (int)SymbolInfoInteger(sym, SYMBOL_DIGITS);
+               detail = StringFormat("opened at %s, SL %s TP %s",
+                  DoubleToString(fill, dg),
+                  nsl > 0 ? DoubleToString(nsl, dg) : "—",
+                  ntp > 0 ? DoubleToString(ntp, dg) : "—");
+            }
+            else
+            {
+               // Say so loudly: the position exists and is unprotected.
+               detail = StringFormat("OPENED WITHOUT A STOP — %u %s",
+                  g_trade.ResultRetcode(), g_trade.ResultRetcodeDescription());
+            }
+         }
+      }
+
+      Ack(id, true, detail, g_trade.ResultOrder());
    }
    else
    {

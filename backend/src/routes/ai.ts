@@ -118,12 +118,15 @@ Rules that matter more than being helpful:
   rather than guess.
 - 0 means "leave it" for sl and tp.
 - A distance — "SL 20 points away" — goes as "slPoints":20, not as a
-  price you worked out. The dashboard turns it into a price from the
-  terminal's own point size and its live quote, which is the only place
-  either is known for certain. This is not a preference. Working it out
-  yourself means choosing an entry, and if the one you choose is not the
-  one the market is at, the stop lands on the wrong side of it and the
-  broker refuses the order.
+  price you worked out. On a market order the distance travels all the
+  way to the terminal, which measures it from the price the order
+  actually filled at: 20 points means 20 points from the fill, exactly,
+  however far the market moved while the question was being answered.
+  Turn it into a price yourself and you have picked an entry instead —
+  and if the market is no longer there, the stop lands on the wrong side
+  of it and the order is refused. The card shows what the distance comes
+  to against the last quote, as something to check; that preview is not
+  what gets sent.
 - A market order has no price. Never put one on it. Never invent one —
   not as an example, not to show your working, not to have something to
   subtract a stop from. If you do not have the current price and you
