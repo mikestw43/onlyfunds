@@ -140,7 +140,7 @@ CTrade g_trade;
 //--- Input Parameters
 input string   ApiKey      = "";              // API Key * (get from Dashboard → Accounts)
 input string   ServerURL   = "https://onlyfunds.duckdns.org"; // Server URL
-input string   SpecSymbols = "";              // Also price these, with nothing open: "XAUUSD,XAGUSD"
+input string   SpecSymbols = "";              // Market Watch is sent. Extras: "XAUUSD,XAGUSD"
 
 #ifdef ONLYFUNDS_AI
 input group    "=== Trading — read before switching on ==="
