@@ -136,7 +136,14 @@ export const OrderDraftCard = ({ plan }: { plan: Plan }) => {
     void priceRisk(account.id, opens.map(r => ({
       symbol: r.symbol ?? '',
       side: r.side ?? 'buy',
-      ...(r.price ? { entry: r.price } : {}),
+      // Only a pending order has a price of its own. A market order is
+      // filled at whatever the market is, and a price on one is either
+      // left over from an edit or, as happened here, invented by the
+      // model to work a stop out from — feeding that back in as the
+      // entry made every check agree with the invention, including the
+      // one that exists to catch a stop on the wrong side. Leave it out
+      // and the server prices it off the terminal's own bid and ask.
+      ...(r.orderType && r.orderType !== 'market' && r.price ? { entry: r.price } : {}),
       ...(r.sl ? { sl: r.sl } : {}),
       ...(r.tp ? { tp: r.tp } : {}),
       ...(r.slPoints ? { slPoints: r.slPoints } : {}),
