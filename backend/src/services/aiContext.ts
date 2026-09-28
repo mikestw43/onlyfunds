@@ -74,6 +74,79 @@ export const buildPortfolioContext = async (userId: string): Promise<PortfolioCo
 
   // ── Open positions, one by one ─────────────────────────────────────────
   const open = accounts.flatMap(a => (a.orders ?? []).map(o => ({ ...o, account: a.name, currency: a.currency || 'USD' })));
+
+  /**
+   * Lots added up here, in code, before the positions are listed.
+   *
+   * A language model does arithmetic by pattern, not by adding, and a
+   * column of eighteen lot sizes with decimals in it is exactly where that
+   * breaks: asked for the sell side of one symbol it answered sixty lots
+   * high, and when told the number was wrong it "recalculated" to the
+   * figure it had just been given — same list, same order, no working, a
+   * different total. That is worse than the first error, because it means
+   * being corrected cannot be trusted to fix it either.
+   *
+   * None of it was necessary. The server already adds these up for the
+   * dashboard; it simply never told the assistant, so the assistant was
+   * left to do by hand the one job it is worst at while the exact answer
+   * sat one line away. Now it is handed the total and told not to add.
+   *
+   * Counted over every position, including any the list below truncates.
+   */
+  interface Tally { buy: number; sell: number; nBuy: number; nSell: number }
+  const blank = (): Tally => ({ buy: 0, sell: 0, nBuy: 0, nSell: 0 });
+  const add = (t: Tally, type: string, lots: number): void => {
+    if (type === 'SELL') { t.sell += lots; t.nSell += 1; } else { t.buy += lots; t.nBuy += 1; }
+  };
+  /** buy 365.27 (16) · sell 355.27 (18) · net long 10.00 */
+  const say = (t: Tally): string => {
+    const net = t.buy - t.sell;
+    const side = Math.abs(net) < 0.005 ? 'flat' : net > 0 ? `net long ${net.toFixed(2)}` : `net short ${(-net).toFixed(2)}`;
+    return `buy ${t.buy.toFixed(2)} (${t.nBuy} ${t.nBuy === 1 ? 'position' : 'positions'}) · ` +
+           `sell ${t.sell.toFixed(2)} (${t.nSell} ${t.nSell === 1 ? 'position' : 'positions'}) · ${side}`;
+  };
+
+  const tallied = accounts
+    .map(a => {
+      const orders = a.orders ?? [];
+      const whole = blank();
+      const bySymbol = new Map<string, Tally>();
+      for (const o of orders) {
+        const lots = typeof o.lots === 'number' && Number.isFinite(o.lots) ? o.lots : 0;
+        add(whole, o.type, lots);
+        if (!bySymbol.has(o.symbol)) bySymbol.set(o.symbol, blank());
+        add(bySymbol.get(o.symbol)!, o.type, lots);
+      }
+      return { a, orders, whole, bySymbol };
+    })
+    .filter(x => x.orders.length > 0);
+
+  if (tallied.length > 0) {
+    lines.push('LOT TOTALS, ADDED UP BY THE SERVER');
+    for (const { a, orders, whole, bySymbol } of tallied) {
+      lines.push(`- ${a.name} (#${a.accountNumber}): ${orders.length} open, ${say(whole)}`);
+      // One symbol means the account line already said it.
+      if (bySymbol.size > 1) {
+        const rows = [...bySymbol.entries()].sort((x, y) => (y[1].buy + y[1].sell) - (x[1].buy + x[1].sell));
+        for (const [symbol, t] of rows.slice(0, 12)) {
+          lines.push(`    ${symbol}: ${t.nBuy + t.nSell} open, ${say(t)}`);
+        }
+        if (rows.length > 12) lines.push(`    (${rows.length - 12} smaller symbols not broken out)`);
+      }
+    }
+    lines.push(
+      'These were added up in code over every position, including any the list below leaves out. ' +
+      'Use them. Never add lot sizes up yourself — that is the one thing you reliably get wrong, ' +
+      'and a wrong exposure figure here is money. If a total someone asks for is not in this block, ' +
+      'say it is not there rather than working it out from the positions.');
+    lines.push(
+      'If they tell you a total of yours is wrong, do not simply adopt their number and call it a ' +
+      'correction. Read this block again and say what it actually says — name the account and ' +
+      'symbol you read it from. If it agrees with them, say so. If it does not, say that instead, ' +
+      'and let them tell you which positions they were counting.');
+    lines.push('');
+  }
+
   lines.push(`OPEN POSITIONS (${open.length})`);
   if (open.length === 0) lines.push('- none');
   for (const o of open.slice(0, 60)) {
