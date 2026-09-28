@@ -468,13 +468,22 @@ export const AiSheet = () => {
     setHi(0);
   };
 
+  /**
+   * Every account that matches, not the first handful.
+   *
+   * This was capped at six back when the list could not be scrolled, so
+   * the cap was the only thing keeping it off the whole screen. Now that
+   * it scrolls, the cap is what stops the seventh account from existing:
+   * with a dozen accounts, four of them demo and named alike, the ones
+   * you most want are at the bottom.
+   */
   const picks = slash
     ? accounts.filter(a => {
         const q = slash.query.toLowerCase();
         return q === ''
           || a.name.toLowerCase().includes(q)
           || String(a.accountNumber ?? '').includes(q);
-      }).slice(0, 6)
+      })
     : [];
 
   /**
