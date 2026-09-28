@@ -122,16 +122,39 @@ export const NewTradeDialog = ({
     return String(round(below ? entry - away : entry + away));
   };
 
+  /**
+   * The symbols this terminal is actually watching.
+   *
+   * The EA builds its spec rows from the open positions first, then the
+   * pending orders, then Market Watch — so this set is, in order, exactly
+   * what the person trades. It was already being fetched here to fill in a
+   * stop price, and not used for anything else, while the list under the
+   * symbol box opened on ADAUSD.v, AUDCAD.v, AUDCHF.v: the alphabet, which
+   * nobody's gold is at the top of.
+   */
+  const watched = useMemo(
+    () => new Set(specs.map(sp => sp.symbol.toUpperCase())),
+    [specs],
+  );
+
   // Type "xa" and every symbol holding those letters comes up, wherever they
   // sit in the name: a broker's gold is XAUUSD on one server and XAUUSD.v on
   // the next, and someone typing "gold" should not come away empty.
+  //
+  // Whatever the box says, a symbol the terminal is watching outranks one it
+  // is not, so the shortest path to the common case is no typing at all.
   const matches = useMemo(() => {
     const q = symbol.trim().toUpperCase();
-    if (!q) return known.slice(0, 12);
-    const starts = known.filter(s => s.toUpperCase().startsWith(q));
-    const holds = known.filter(s => !s.toUpperCase().startsWith(q) && s.toUpperCase().includes(q));
-    return [...starts, ...holds].slice(0, 12);
-  }, [symbol, known]);
+    const pool = q
+      ? [
+          ...known.filter(s => s.toUpperCase().startsWith(q)),
+          ...known.filter(s => !s.toUpperCase().startsWith(q) && s.toUpperCase().includes(q)),
+        ]
+      : known;
+    const hot = pool.filter(s => watched.has(s.toUpperCase()));
+    const cold = pool.filter(s => !watched.has(s.toUpperCase()));
+    return [...hot, ...cold].slice(0, 12).map(s => ({ s, hot: watched.has(s.toUpperCase()) }));
+  }, [symbol, known, watched]);
 
   // A click anywhere else closes the list. Without this it survives a tap on
   // the price field and covers it.
@@ -150,7 +173,7 @@ export const NewTradeDialog = ({
     if (!openList || matches.length === 0) return;
     if (e.key === 'ArrowDown') { e.preventDefault(); setHighlight(h => (h + 1) % matches.length); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setHighlight(h => (h - 1 + matches.length) % matches.length); }
-    else if (e.key === 'Enter') { e.preventDefault(); pick(matches[Math.min(highlight, matches.length - 1)]); }
+    else if (e.key === 'Enter') { e.preventDefault(); pick(matches[Math.min(highlight, matches.length - 1)]!.s); }
     else if (e.key === 'Escape') { setOpenList(false); }
   };
 
@@ -289,7 +312,7 @@ export const NewTradeDialog = ({
               onChange={e => { setSymbol(e.target.value); setOpenList(true); setHighlight(0); }}
               onFocus={() => setOpenList(true)}
               onKeyDown={onSymbolKey}
-              placeholder="XAUUSD"
+              placeholder={t('trade.sym_hint')}
               // Deliberately not upper-cased, here or on the way out: MT5
               // symbol names are case-sensitive and this broker's gold is
               // XAUUSD.v, which XAUUSD.V would not find.
@@ -312,19 +335,37 @@ export const NewTradeDialog = ({
                     {t('trade.no_symbols')}
                   </div>
                 )}
-                {matches.map((s, i) => (
-                  <button
-                    key={s}
-                    type="button"
-                    onMouseDown={e => { e.preventDefault(); pick(s); }}
-                    onMouseEnter={() => setHighlight(i)}
-                    style={{
-                      display: 'block', width: '100%', textAlign: 'left',
-                      padding: '8px 10px', border: 'none', cursor: 'pointer',
-                      background: i === highlight ? 'var(--bg-input)' : 'transparent',
-                      color: 'var(--text)', fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-body)',
-                    }}
-                  >{s}</button>
+                {matches.map((m, i) => (
+                  <div key={m.s}>
+                    {/* A line where the terminal's own symbols stop and the
+                        rest of the broker's book begins. Only drawn where
+                        both kinds are on screen. */}
+                    {i > 0 && matches[i - 1]!.hot && !m.hot && (
+                      <div style={{
+                        padding: '6px 10px 4px', borderTop: '1px solid var(--border)',
+                        fontFamily: 'var(--ff-section)', fontSize: 'var(--fs-micro)',
+                        color: 'var(--text-muted)', letterSpacing: '.5px',
+                      }}>{t('trade.sym_all')}</div>
+                    )}
+                    {i === 0 && m.hot && (
+                      <div style={{
+                        padding: '6px 10px 4px',
+                        fontFamily: 'var(--ff-section)', fontSize: 'var(--fs-micro)',
+                        color: 'var(--text-muted)', letterSpacing: '.5px',
+                      }}>{t('trade.sym_watched')}</div>
+                    )}
+                    <button
+                      type="button"
+                      onMouseDown={e => { e.preventDefault(); pick(m.s); }}
+                      onMouseEnter={() => setHighlight(i)}
+                      style={{
+                        display: 'block', width: '100%', textAlign: 'left',
+                        padding: '8px 10px', border: 'none', cursor: 'pointer',
+                        background: i === highlight ? 'var(--bg-input)' : 'transparent',
+                        color: 'var(--text)', fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-body)',
+                      }}
+                    >{m.s}</button>
+                  </div>
                 ))}
 
                 {/* Where these names come from. Until the reporter EA sends

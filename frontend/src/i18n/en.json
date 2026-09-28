@@ -678,5 +678,8 @@
   "mem.save": "Remember",
   "mem.dismiss": "No need",
   "mem.saved": "Saved to memory",
-  "mem.offer": "Remember this?"
+  "mem.offer": "Remember this?",
+  "trade.sym_watched": "On this terminal",
+  "trade.sym_all": "Everything else",
+  "trade.sym_hint": "Tap or type"
 }
