@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
-import type { Account, AccountGroup, Order } from '../../types';
+import type { Account, AccountGroup, Order, PendingOrder } from '../../types';
 import { formatLots, formatPercent, getDrawdownColor, formatBrokerShort } from '../../utils/formatters';
 import { FlashNumber } from '../ui/FlashNumber';
 import { CloseAllDialog } from './CloseAllDialog';
 import { ProtectionSettings } from '../settings/ProtectionSettings';
 import { PositionPanel } from './PositionPanel';
 import { NewTradeDialog } from './NewTradeDialog';
+import { PendingPanel } from './PendingPanel';
 import { useQueryClient } from '@tanstack/react-query';
 import { useUIStore } from '../../stores/uiStore';
 import { fetchGroups, assignAccountGroup } from '../../services/api';
@@ -91,6 +92,25 @@ export const BotCard = ({ account, todayPnl = 0 }: Props) => {
   const isDemo = account.isDemo ?? false;
   const orderCount = typeof account.orders === 'number' ? account.orders : account.orders.length;
   const ordersArray: Order[] = Array.isArray(account.orders) ? account.orders : [];
+  // Sent by the EA on every push and, until now, shown nowhere: a card
+  // reading "0 open" on an account holding nine pending orders looked like
+  // an account doing nothing.
+  const pendingArray: PendingOrder[] = Array.isArray(account.pending) ? account.pending : [];
+
+  /**
+   * What this account traded last, for the NEW TRADE box to open on.
+   *
+   * Newest open position first, then the newest pending order. Both are
+   * already on screen, so nothing is fetched for it — and an account that
+   * has done nothing yet simply opens on an empty box, as before.
+   */
+  const last = (() => {
+    const newest = [...ordersArray].sort(
+      (a, b) => new Date(b.openTime).getTime() - new Date(a.openTime).getTime())[0];
+    if (newest) return { symbol: newest.symbol, lots: newest.lots };
+    const p = pendingArray[pendingArray.length - 1];
+    return p ? { symbol: p.symbol, lots: p.lots } : null;
+  })();
   // USDC is a dollar stablecoin and the server converts it 1:1; mapping it to
   // USC here displayed it as cents, a hundredfold away from the KPI tiles.
   const cur = account.currency || 'USD';
@@ -452,6 +472,29 @@ export const BotCard = ({ account, todayPnl = 0 }: Props) => {
               orders={ordersArray}
               currency={account.currency}
             />
+
+            {/* Waiting, not working. Below the positions and behind its own
+                heading, because the two answer different questions: what is
+                at risk now, and what is set to happen. */}
+            {pendingArray.length > 0 && (
+              <>
+                <div style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '8px 12px',
+                  borderTop: '1px solid var(--border2)',
+                  borderBottom: '1px solid var(--border-color)',
+                  background: 'var(--bg-tertiary)',
+                }}>
+                  <span style={{
+                    fontFamily: 'var(--ff-section)', fontSize: 'var(--fs-section)',
+                    color: 'var(--text-primary)', fontWeight: 600, letterSpacing: '1px',
+                  }}>
+                    PENDING ORDERS ({pendingArray.length})
+                  </span>
+                </div>
+                <PendingPanel orders={pendingArray} />
+              </>
+            )}
           </div>
         )}
       </div>
@@ -468,6 +511,8 @@ export const BotCard = ({ account, todayPnl = 0 }: Props) => {
           accountId={account.id}
           accountName={account.name}
           currency={account.currency}
+          lastSymbol={last?.symbol}
+          lastVolume={last?.lots}
           onClose={() => setShowNewTrade(false)}
         />
       )}

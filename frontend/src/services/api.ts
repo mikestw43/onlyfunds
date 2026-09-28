@@ -724,6 +724,28 @@ export const fetchAiStatus = async (): Promise<AiStatus> => {
   return res.data as AiStatus;
 };
 
+/** What the terminal says about a symbol: price, point size, volume steps. */
+export interface SymbolSpec {
+  symbol: string;
+  bid: number;
+  ask: number;
+  digits: number;
+  point: number;
+  contractSize: number;
+  tickValue: number;
+  tickSize: number;
+  volMin: number;
+  volMax: number;
+  volStep: number;
+  stopsLevel: number;
+  atr14: number;
+}
+
+export const fetchAccountSpecs = async (accountId: string): Promise<SymbolSpec[]> => {
+  const res = await api.get(`/accounts/${accountId}/specs`);
+  return (res.data as { specs?: SymbolSpec[] }).specs ?? [];
+};
+
 export const fetchAiContext = async (): Promise<AiContext> => {
   const res = await api.get('/ai/context');
   return res.data as AiContext;

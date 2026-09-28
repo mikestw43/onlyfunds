@@ -5,7 +5,7 @@ import { commandQueue } from '../services/commandQueue';
 import { logAudit } from '../services/auditLogger';
 import { logCommandQueued } from '../services/commandLog';
 import { isReal } from '../mock/simulator';
-import { priceRisk } from '../services/riskMath';
+import { priceRisk, specsFor } from '../services/riskMath';
 import { broadcastToUser } from '../websocket/broadcaster';
 import prisma from '../lib/prisma';
 import type { Account } from '../mock/data';
@@ -424,6 +424,29 @@ router.post('/:id/risk', async (req: AuthRequest, res: Response) => {
     }));
 
   res.json(await priceRisk(id, wanted, account.equity ?? null, account.currency || 'USD'));
+});
+
+/**
+ * GET /api/accounts/:id/specs — the terminal's own figures per symbol
+ *
+ * Sent by EA v1.4 every few minutes for the symbols in use: the live bid
+ * and ask, how many decimals the broker quotes, what one point is worth in
+ * price, the volume steps and a 14-day ATR.
+ *
+ * The NEW TRADE box needs them to fill anything in for you. "A stop 1000
+ * points away" is 10.00 on a two-decimal gold and 0.01000 on a five-decimal
+ * pair, and the only place that difference is known for certain is the
+ * terminal. An account still on an older EA sends none, and the box simply
+ * leaves those fields empty rather than guessing.
+ */
+router.get('/:id/specs', (req: AuthRequest, res: Response) => {
+  const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const account = runtimeStore.getAccountsByUser(req.user!.id).find(a => a.id === id);
+  if (!account) {
+    res.status(404).json({ error: 'Account not found' });
+    return;
+  }
+  void specsFor(id).then(specs => res.json({ specs })).catch(() => res.json({ specs: [] }));
 });
 
 // GET /api/accounts/:id/symbols — what this account can be asked to trade
