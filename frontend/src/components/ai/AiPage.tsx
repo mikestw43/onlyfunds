@@ -536,6 +536,28 @@ export const AiSheet = () => {
 
   const chips = [t('ai.suggest_today'), t('ai.suggest_risk'), t('ai.suggest_compare'), t('ai.suggest_week')];
 
+  /**
+   * The order desk.
+   *
+   * Two kinds of command, and the difference between them is the whole
+   * point of the panel. An ASK goes straight out: the worst it can do is
+   * cost a question. A DO never does — it writes itself into the box and
+   * stops there, so the account still has to be chosen and the words read
+   * before anything is sent, and even then the answer comes back as a card
+   * with a CONFIRM button on it. Nothing here places an order by itself.
+   */
+  const DESK: { do_: boolean; label: string; text: string }[] = [
+    { do_: false, label: '📊 สรุปพอท',        text: 'สรุปพอทนี้ให้หน่อย' },
+    { do_: false, label: '⚠️ ไม้ไม่มี SL',     text: 'ไม้ไหนไม่มี SL บ้าง' },
+    { do_: false, label: '⚖️ buy/sell กี่ lot', text: 'ตอนนี้ buy กี่ lot sell กี่ lot สุทธิเท่าไหร่' },
+    { do_: false, label: '📉 ไม้ขาดทุน',       text: 'ไม้ไหนขาดทุนอยู่บ้าง เรียงจากมากไปน้อย' },
+    { do_: true,  label: '🛡️ ใส่ SL ให้ไม้ที่ไม่มี', text: 'ไม้ไหนไม่มี SL ใส่ให้หน่อย ห่างจากราคาเข้า 500 จุด' },
+    { do_: true,  label: '🔓 เลื่อน SL มาจุดเข้า', text: 'ไม้ที่กำไรแล้ว เลื่อน SL มาที่ราคาเข้าให้หมด' },
+    { do_: true,  label: '✂️ ปิดครึ่ง',        text: 'ปิดครึ่งนึงของไม้ #' },
+    { do_: true,  label: '💰 เก็บกำไร',        text: 'ปิดไม้ที่กำไรเกิน 50 ดอลทั้งหมด' },
+  ];
+  const [desk, setDesk] = useState(false);
+
   if (!open) return null;
 
   return (
@@ -1016,8 +1038,43 @@ export const AiSheet = () => {
         </div>
       )}
 
+      {/* The order desk, above the composer for the same reason the account
+          list is: it pushes the conversation up rather than covering it,
+          and it can never end up behind the phone keyboard. */}
+      {desk && picks.length === 0 && (
+        <div className="ai-desk">
+          <div className="ai-desk-head">ถาม — ส่งเลย</div>
+          {DESK.filter(c => !c.do_).map(c => (
+            <button key={c.label} className="ai-desk-row" disabled={busy}
+              onClick={() => { setDesk(false); void send(c.text); }}>
+              <span className="ai-desk-lbl">{c.label}</span>
+            </button>
+          ))}
+          <div className="ai-desk-head">สั่งทำ — ใส่ในช่องพิมให้ ยังไม่ส่ง</div>
+          {DESK.filter(c => c.do_).map(c => (
+            <button key={c.label} className="ai-desk-row ai-desk-do" disabled={busy}
+              onClick={() => {
+                // Written into the box, never sent. The account still has
+                // to be chosen and the words read first.
+                setDesk(false);
+                const text = c.text + ' ';
+                onDraft(text, text.length);
+                boxRef.current?.focus();
+              }}>
+              <span className="ai-desk-lbl">{c.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Composer */}
       <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end', minWidth: 0 }}>
+        <button
+          className={desk ? 'ai-plus ai-plus-on' : 'ai-plus'}
+          onClick={() => setDesk(d => !d)}
+          title="คำสั่ง" aria-label="คำสั่ง"
+          style={{ border: 0 }}
+        ><IconSpark size={19} /></button>
         {/* A label, not a button that calls click() on a hidden input: iOS
             only opens the picker for a real activation, and a programmatic
             click from pointerdown is not one — the button did nothing at
@@ -1392,6 +1449,60 @@ export const AiSheet = () => {
           font-size: 13px;
           color: var(--text-dim);
         }
+        /* The order desk. Same slot and the same scroll rules as the
+           account list, so the two behave alike under a thumb. */
+        .ai-desk {
+          display: flex;
+          flex-direction: column;
+          /* Tall enough that all eight fit on a phone without scrolling —
+             a command you have to scroll to find is one you forget you
+             have. Still a cap, and still scrollable, for a short screen
+             or a keyboard that has eaten half of it. */
+          max-height: 55vh;
+          overflow-y: auto;
+          touch-action: pan-y;
+          -webkit-overflow-scrolling: touch;
+          overscroll-behavior: contain;
+          border: 1px solid var(--border2);
+          border-radius: var(--radius-sm);
+          background: var(--bg-card);
+          margin-bottom: 8px;
+        }
+        .ai-desk-head {
+          padding: 8px 12px 4px;
+          font-family: var(--ff-body);
+          font-size: 11px;
+          letter-spacing: 0.04em;
+          color: var(--text-muted);
+          background: var(--bg-input);
+          border-bottom: 1px solid var(--border);
+        }
+        .ai-desk-row {
+          display: flex;
+          align-items: center;
+          width: 100%;
+          min-height: 44px;
+          padding: 8px 12px;
+          background: none;
+          border: 0;
+          border-bottom: 1px solid var(--border);
+          border-left: 2px solid var(--accent-blue);
+          color: var(--text);
+          font-size: 15px;
+          text-align: left;
+          cursor: pointer;
+        }
+        /* Orange, because these write a command rather than ask a
+           question, and the eye should know which is which before the
+           thumb lands. */
+        .ai-desk-do { border-left-color: var(--warning, #f59e0b); }
+        .ai-desk-row:last-child { border-bottom: 0; }
+        .ai-desk-lbl {
+          flex: 1; min-width: 0;
+          overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .ai-plus-on { background: var(--bg-hover, rgba(255,255,255,0.10)); }
+
         /* Three dots that say the question is on its way. */
         .ai-dots { display: inline-flex; gap: 4px; align-items: center; }
         .ai-dots i {
