@@ -106,10 +106,29 @@ export const buildPortfolioContext = async (userId: string): Promise<PortfolioCo
   });
 
   const specLines: string[] = [];
+  /** True where any account's quotes have gone quiet long enough to distrust. */
+  let anyStale = false;
+
   for (const a of withSpecs) {
     const specs = Array.isArray(a.specs) ? (a.specs as unknown as SpecRow[]) : [];
     if (specs.length === 0) continue;
     const cur = a.currency || 'USD';
+
+    /**
+     * How old these quotes are.
+     *
+     * The EA sends them every few minutes, so they are a snapshot, never
+     * the tick. Handing over a bid and an ask with no date on them invites
+     * exactly one mistake — treating a price from an hour ago as the price
+     * now — and the cost of that mistake is a stop placed on the wrong
+     * side of the market and an order the broker refuses.
+     */
+    const mins = a.specsAt ? Math.round((Date.now() - new Date(a.specsAt).getTime()) / 60000) : null;
+    const age = mins == null ? 'age unknown'
+      : mins <= 1 ? 'quoted just now'
+      : `quoted ${mins} minutes ago`;
+    if (mins == null || mins > 15) anyStale = true;
+
     for (const sp of specs.slice(0, 25)) {
       const perLot = sp.tickSize > 0 ? sp.tickValue / sp.tickSize : 0;
       specLines.push(
@@ -117,7 +136,7 @@ export const buildPortfolioContext = async (userId: string): Promise<PortfolioCo
         `1 lot = ${sp.contractSize} units, moving 1.0 in price = ${perLot.toFixed(2)} ${cur} per lot, ` +
         `lots ${sp.volMin}–${sp.volMax} in steps of ${sp.volStep}, ` +
         `broker's minimum stop ${sp.stopsLevel} points (1 point = ${sp.point}), ` +
-        `ATR over 14 days ${sp.atr14}`,
+        `ATR over 14 days ${sp.atr14}, ${age}`,
       );
     }
   }
@@ -127,6 +146,16 @@ export const buildPortfolioContext = async (userId: string): Promise<PortfolioCo
     lines.push(...specLines);
     lines.push('Risk on one order = (distance from entry to stop) ÷ 1.0 × (that symbol\'s money per lot) × lots.');
     lines.push('Use these numbers. Do not use remembered contract sizes — this broker\'s may differ.');
+    lines.push(
+      'Each bid and ask above is a snapshot from the EA\'s last push, not the tick. It is ' +
+      'good enough to size a position and to say how far a stop is; it is not the price an ' +
+      'order will fill at. Never call one "the current price" without saying when it was quoted.');
+    if (anyStale) {
+      lines.push(
+        'SOME OF THOSE QUOTES ARE OLD (over fifteen minutes, or undated). Treat those symbols ' +
+        'as having no price: say the EA has gone quiet and ask, rather than working a stop out ' +
+        'from a number the market has left behind.');
+    }
     lines.push('');
   } else {
     lines.push('SYMBOL FACTS: none yet. The EA sends them a few minutes after starting (v1.4 and up).');
