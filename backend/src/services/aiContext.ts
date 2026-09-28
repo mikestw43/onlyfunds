@@ -85,6 +85,12 @@ export const buildPortfolioContext = async (userId: string): Promise<PortfolioCo
     );
   }
   if (open.length > 60) lines.push(`- (${open.length - 60} more not listed)`);
+  if (open.length > 0) {
+    lines.push(
+      'Every "now" above came from the EA\'s last ordinary push, which it sends every two ' +
+      'seconds while the account is online. For a symbol held open, that is the freshest ' +
+      'price this app has — fresher than the bid and ask further down.');
+  }
   lines.push('');
 
   const pending = accounts.flatMap(a => (a.pending ?? []).map(o => ({ ...o, account: a.name })));
@@ -105,9 +111,35 @@ export const buildPortfolioContext = async (userId: string): Promise<PortfolioCo
     select: { id: true, name: true, accountNumber: true, currency: true, specs: true, specsAt: true },
   });
 
+  /**
+   * The newest price this app holds for a symbol, account by account.
+   *
+   * Two feeds carry a price and they do not arrive at the same rate. The
+   * specs below are pushed once a minute; an open position's currentPrice
+   * rides the ordinary two-second push. So for any symbol the person
+   * actually holds there were two numbers for the same thing, as much as a
+   * minute apart, and nothing in this text said which one to believe. While
+   * the market is quiet they agree and it does not matter. While it runs
+   * they do not, and the model was left to choose — the same silence that
+   * let it answer once with an entry price no one had quoted.
+   *
+   * Only an account the EA is still pushing counts. Status turns offline
+   * after thirty seconds without a push, so online means this number is
+   * seconds old, not hours.
+   */
+  const heldPrice = new Map<string, number>();
+  for (const a of accounts) {
+    if (a.status !== 'online') continue;
+    for (const o of a.orders ?? []) {
+      if (typeof o.currentPrice === 'number' && o.currentPrice > 0) heldPrice.set(`${a.id}|${o.symbol}`, o.currentPrice);
+    }
+  }
+
   const specLines: string[] = [];
   /** True where any account's quotes have gone quiet long enough to distrust. */
   let anyStale = false;
+  /** True once any symbol line carries a seconds-old price to prefer. */
+  let anyHeld = false;
 
   for (const a of withSpecs) {
     const specs = Array.isArray(a.specs) ? (a.specs as unknown as SpecRow[]) : [];
@@ -131,12 +163,17 @@ export const buildPortfolioContext = async (userId: string): Promise<PortfolioCo
 
     for (const sp of specs.slice(0, 25)) {
       const perLot = sp.tickSize > 0 ? sp.tickValue / sp.tickSize : 0;
+      // Said here rather than left for the model to find in the positions
+      // list above: this is the line it reads when it wants a price.
+      const held = heldPrice.get(`${a.id}|${sp.symbol}`);
+      if (held != null) anyHeld = true;
       specLines.push(
         `- ${sp.symbol} on ${a.name} (#${a.accountNumber}): bid ${sp.bid}, ask ${sp.ask}, ` +
         `1 lot = ${sp.contractSize} units, moving 1.0 in price = ${perLot.toFixed(2)} ${cur} per lot, ` +
         `lots ${sp.volMin}–${sp.volMax} in steps of ${sp.volStep}, ` +
         `broker's minimum stop ${sp.stopsLevel} points (1 point = ${sp.point}), ` +
-        `ATR over 14 days ${sp.atr14}, ${age}`,
+        `ATR over 14 days ${sp.atr14}, ${age}` +
+        (held != null ? `, PRICE NOW ${held} (seconds old, off an open position on this symbol)` : ''),
       );
     }
   }
@@ -150,11 +187,19 @@ export const buildPortfolioContext = async (userId: string): Promise<PortfolioCo
       'Each bid and ask above is a snapshot from the EA\'s last push, not the tick. It is ' +
       'good enough to size a position and to say how far a stop is; it is not the price an ' +
       'order will fill at. Never call one "the current price" without saying when it was quoted.');
+    if (anyHeld) {
+      lines.push(
+        'WHERE A LINE CARRIES "PRICE NOW", that is the current price of that symbol, seconds ' +
+        'old, and the bid and ask in front of it are up to a minute behind it. Quote PRICE NOW, ' +
+        'size from PRICE NOW, and keep the bid and ask for the spread, the point size and the ' +
+        'money per lot. A symbol with no PRICE NOW has only the bid and ask, at their stated age.');
+    }
     if (anyStale) {
       lines.push(
         'SOME OF THOSE QUOTES ARE OLD (over fifteen minutes, or undated). Treat those symbols ' +
         'as having no price: say the EA has gone quiet and ask, rather than working a stop out ' +
-        'from a number the market has left behind.');
+        'from a number the market has left behind. A symbol carrying PRICE NOW is not one of ' +
+        'them — that price is good.');
     }
     lines.push('');
   } else {

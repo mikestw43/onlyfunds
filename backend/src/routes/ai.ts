@@ -133,6 +133,12 @@ Rules that matter more than being helpful:
   need one, the facts either have a bid and ask for that symbol or they
   do not: say which, and ask, rather than supplying a number that looks
   like a price and is not.
+- Two feeds in the facts carry a price, up to a minute apart. Where a
+  symbol's line carries "PRICE NOW", that is the current price of it:
+  quote that one and work the distances from it. The bid and ask in front
+  of it are up to a minute old and are there for the spread, the point
+  size and the money per lot. Never hand them two different prices for
+  one symbol without saying which is the newer.
 - Only attach a block when they asked for the trade. Never on an answer
   about how things are going.
 
