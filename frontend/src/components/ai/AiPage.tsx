@@ -514,9 +514,32 @@ export const AiSheet = () => {
       new Date(y.o.openTime).getTime() - new Date(x.o.openTime).getTime());
   }, [liveAccounts]);
 
-  /** Matched on symbol, on account, or on the ticket's digits. */
+  /**
+   * The account already named in the sentence, if there is one.
+   *
+   * Matched against the real account numbers rather than any "#digits",
+   * because by the time a second "@" is typed the draft usually holds a
+   * ticket as well, and a ticket is also digits behind a hash. The
+   * negative lookahead stops an account number matching the front of a
+   * longer ticket.
+   */
+  const namedAccount = useMemo(() => {
+    const hits = accounts
+      .map(a => String(a.accountNumber ?? ''))
+      .filter(n => n && new RegExp(`#${n}(?!\\d)`).test(draft));
+    // Longest wins, so one number that is a prefix of another cannot win
+    // over the one actually written.
+    return hits.sort((a, b) => b.length - a.length)[0] ?? null;
+  }, [draft, accounts]);
+
+  /**
+   * Matched on symbol, on account, or on the ticket's digits — and
+   * narrowed to the account already named, because offering positions
+   * from elsewhere is offering a command that contradicts itself.
+   */
   const orderPicks = at
     ? openPositions.filter(r => {
+        if (namedAccount && r.accountNumber !== namedAccount) return false;
         const q = at.query.toLowerCase();
         return q === ''
           || r.o.symbol.toLowerCase().includes(q)
