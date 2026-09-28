@@ -81,10 +81,17 @@ export const NewTradeDialog = ({
   useEffect(() => {
     let alive = true;
     fetchAccountSymbols(accountId)
-      .then(({ symbols, fromBroker: n }) => {
+      .then(({ symbols, fromBroker: n, lastTraded }) => {
         if (!alive) return;
         setKnown(symbols);
         setFromBroker(n);
+        // Third in line, behind an open position and a pending order: what
+        // the account closed last. An account that is flat between trades
+        // used to open on an empty box, which on a phone is a symbol to
+        // type. The size is deliberately not taken with it — 25 lots from
+        // a trade closed last week is not a default, it is an accident
+        // waiting for a mis-tap — so volume stays at its own.
+        if (lastTraded && !lastSymbol) setSymbol(prev => prev || lastTraded);
       })
       .catch(() => { /* suggestions are a convenience, not a requirement */ });
     fetchAccountSpecs(accountId)

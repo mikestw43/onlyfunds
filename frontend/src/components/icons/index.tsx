@@ -300,3 +300,87 @@ export const IconArrowUp = ({ size }: IconProps) => (
     <path d="M6 11.5 12 5.5l6 6" />
   </Svg>
 );
+
+// ── The order desk ───────────────────────────────────────────────────────────
+//
+// Emoji were quicker to write and wrong for the same reason the old ⚙ and ✈
+// were: they come from the phone's own font, at its own weight and baseline,
+// in its own colours — a row of them next to this family reads as a row of
+// stickers. These are the family: 24×24, one stroke, currentColor, so each one
+// takes the colour of the group it is in.
+
+/** Quick commands. A bolt, not the assistant's sparkle — the button that
+ *  opens the desk sits an inch from the one that opens the assistant, and
+ *  two sparkles said the two did the same thing. */
+export const IconBolt = ({ size }: IconProps) => (
+  <Svg size={size}>
+    <path d="M13.2 3 5.8 13.2h5L9.9 21l7.4-10.2h-5z" />
+  </Svg>
+);
+
+/** Where the account stands: the report page's own mark, at desk size. */
+export const IconSummary = ({ size }: IconProps) => (
+  <Svg size={size}>
+    <path d="M4 20h16" />
+    <path d="M7 20v-6M12 20v-10M17 20v-4" />
+  </Svg>
+);
+
+/** A stop that is not there: the shield, broken by the line through it. */
+export const IconShieldOff = ({ size }: IconProps) => (
+  <Svg size={size}>
+    <path d="M12 3.2 19 6v5.6c0 4-2.9 7.3-7 8.4-4.1-1.1-7-4.4-7-8.4V6z" />
+    <path d="M4 20 20 4" />
+  </Svg>
+);
+
+/** A stop that is there. */
+export const IconShield = ({ size }: IconProps) => (
+  <Svg size={size}>
+    <path d="M12 3.2 19 6v5.6c0 4-2.9 7.3-7 8.4-4.1-1.1-7-4.4-7-8.4V6z" />
+    <path d="M9 11.8 11.3 14l4-4.2" />
+  </Svg>
+);
+
+/** Two sides weighed against each other — buy against sell. */
+export const IconScale = ({ size }: IconProps) => (
+  <Svg size={size}>
+    <path d="M12 4v16" />
+    <path d="M5 7h14" />
+    <path d="M8.2 7 5.4 13h5.6zM15.8 7 13 13h5.6z" />
+  </Svg>
+);
+
+/** Going the wrong way. */
+export const IconTrendDown = ({ size }: IconProps) => (
+  <Svg size={size}>
+    <path d="M4 8l5.5 5.5 3.5-3.5 6 6" />
+    <path d="M19 12v4h-4" />
+  </Svg>
+);
+
+/** Going the right way. */
+export const IconTrendUp = ({ size }: IconProps) => (
+  <Svg size={size}>
+    <path d="M4 16l5.5-5.5 3.5 3.5 6-6" />
+    <path d="M19 12V8h-4" />
+  </Svg>
+);
+
+/** Break-even: the stop, moved up to the line the position opened on. */
+export const IconBreakEven = ({ size }: IconProps) => (
+  <Svg size={size}>
+    <path d="M4 15h16" />
+    <path d="M12 12V4" />
+    <path d="M8.5 7.5 12 4l3.5 3.5" />
+    <path d="M4 20h16" />
+  </Svg>
+);
+
+/** Take part of it off: the position, cut in two. */
+export const IconHalf = ({ size }: IconProps) => (
+  <Svg size={size}>
+    <rect x="4" y="7" width="16" height="10" rx="2" />
+    <path d="M12 4v16" strokeDasharray="2.5 2.5" />
+  </Svg>
+);

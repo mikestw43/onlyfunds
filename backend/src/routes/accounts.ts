@@ -480,12 +480,21 @@ router.get('/:id/symbols', async (req: AuthRequest, res: Response) => {
     ...(account.pending ?? []).map(o => o.symbol),
   ];
 
-  const [row, traded] = await Promise.all([
+  const [row, traded, latest] = await Promise.all([
     prisma.account.findUnique({ where: { id }, select: { symbols: true, symbolsAt: true } }),
     prisma.closedTrade.findMany({
       where: { accountId: id },
       select: { symbol: true },
       distinct: ['symbol'],
+    }),
+    // The last thing closed here, for the NEW TRADE box to open on when
+    // nothing is open to read it from. An account that is flat between
+    // trades had nothing to offer and opened empty, which on a phone
+    // means typing a symbol that the account traded an hour ago.
+    prisma.closedTrade.findFirst({
+      where: { accountId: id },
+      orderBy: { closeTime: 'desc' },
+      select: { symbol: true, closeTime: true },
     }),
   ]);
 
@@ -504,6 +513,11 @@ router.get('/:id/symbols', async (req: AuthRequest, res: Response) => {
     // broker's own or only this account's history.
     fromBroker: fromBroker.length,
     brokerListAt: row?.symbolsAt ?? null,
+    // The symbol only. The size of a trade closed a week ago is not a
+    // sane default for the next one, and a large one filled in by itself
+    // is a mis-tap away from being sent.
+    lastTraded: latest?.symbol ?? null,
+    lastTradedAt: latest?.closeTime ?? null,
   });
 });
 

@@ -115,11 +115,14 @@ export const closeAllOrders = async (id: string) => {
  *  symbol box stays free text on top of these suggestions. */
 export const fetchAccountSymbols = async (
   accountId: string,
-): Promise<{ symbols: string[]; fromBroker: number }> => {
+): Promise<{ symbols: string[]; fromBroker: number; lastTraded: string | null }> => {
   const res = await api.get(`/accounts/${accountId}/symbols`);
   return {
     symbols: (res.data?.symbols ?? []) as string[],
     fromBroker: (res.data?.fromBroker ?? 0) as number,
+    // What this account closed last, for a box with no open position to
+    // take a symbol from.
+    lastTraded: (res.data?.lastTraded ?? null) as string | null,
   };
 };
 

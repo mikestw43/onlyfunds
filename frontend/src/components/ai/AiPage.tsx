@@ -1,10 +1,13 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { askAi, fetchAiContext, fetchAiStatus, type AiContext, type AiStatus, fetchAiChats, fetchAiChat, deleteAiChat, truncateAiChat,
   type AiChatSummary, fetchAccounts } from '../../services/api';
-import type { Account } from '../../types';
+import type { Account, Order } from '../../types';
 import { useTranslation } from '../../i18n/useTranslation';
 import { useUIStore } from '../../stores/uiStore';
-import { IconSpark, IconMic, IconPlus, IconCopy, IconRetry, IconPencil, IconArrowUp } from '../icons';
+import { useAccountStore } from '../../stores/accountStore';
+import { IconSpark, IconMic, IconPlus, IconCopy, IconRetry, IconPencil, IconArrowUp,
+  IconBolt, IconSummary, IconShield, IconShieldOff, IconScale, IconTrendDown,
+  IconTrendUp, IconBreakEven, IconHalf } from '../icons';
 import { prepareImage } from '../../utils/imagePrep';
 import { useDictation } from '../../hooks/useDictation';
 import { RichText } from './RichText';
@@ -121,6 +124,23 @@ export const AiSheet = () => {
    */
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [slash, setSlash] = useState<{ at: number; query: string } | null>(null);
+
+  /**
+   * Typing "@" offers the open positions.
+   *
+   * Half the commands worth giving name one — close half of it, move its
+   * stop — and the assistant is told never to invent a ticket, so the
+   * alternative was reading an eleven-digit number off a card and typing
+   * it into a phone without a digit going astray. It is the same argument
+   * as the account picker one step further in: the field that decides
+   * which position gets closed is the last one to leave to memory.
+   *
+   * The live positions are in the dashboard's own store, put there by the
+   * socket. /api/accounts reports `orders` as a count, so the list the
+   * picker needs is not in what this page fetches for the "/" list.
+   */
+  const [at, setAt] = useState<{ at: number; query: string } | null>(null);
+  const liveAccounts = useAccountStore(st => st.accounts);
   const [hi, setHi] = useState(0);
   // The question in flight, so STOP has something to cancel.
   const inflight = useRef<AbortController | null>(null);
@@ -327,6 +347,7 @@ export const AiSheet = () => {
     if ((!question && attached.length === 0) || busy) return;
     setDraft('');
     setSlash(null);
+    setAt(null);
     setPhotos([]);
     // The composer holds focus through the tap so the button does not
     // move out from under the finger; once the question is away, the
@@ -460,12 +481,66 @@ export const AiSheet = () => {
   /** A "/" that begins a word, and whatever has been typed after it. */
   const SLASH = /(?:^|\s)\/([^\s/]*)$/;
 
+  /** An "@" that begins a word, and whatever has been typed after it. */
+  const AT = /(?:^|\s)@([^\s@]*)$/;
+
   const onDraft = (value: string, caret: number) => {
     setDraft(value);
-    const m = value.slice(0, caret).match(SLASH);
+    const head = value.slice(0, caret);
+    const m = head.match(SLASH);
     // The slash itself sits one character before what was typed after it.
     setSlash(m ? { at: caret - m[1].length - 1, query: m[1] } : null);
+    const a = head.match(AT);
+    setAt(a ? { at: caret - a[1].length - 1, query: a[1] } : null);
     setHi(0);
+  };
+
+  /**
+   * Every open position, newest first, with the account it belongs to.
+   *
+   * Newest first because a command about a position is usually about one
+   * just opened, and because thirty-two of them in ticket order is a wall
+   * of digits.
+   */
+  const openPositions = useMemo(() => {
+    const rows: { o: Order; accountName: string; accountNumber: string }[] = [];
+    for (const a of liveAccounts) {
+      if (!Array.isArray(a.orders)) continue;
+      for (const o of a.orders) {
+        rows.push({ o, accountName: a.name, accountNumber: String(a.accountNumber ?? '') });
+      }
+    }
+    return rows.sort((x, y) =>
+      new Date(y.o.openTime).getTime() - new Date(x.o.openTime).getTime());
+  }, [liveAccounts]);
+
+  /** Matched on symbol, on account, or on the ticket's digits. */
+  const orderPicks = at
+    ? openPositions.filter(r => {
+        const q = at.query.toLowerCase();
+        return q === ''
+          || r.o.symbol.toLowerCase().includes(q)
+          || r.accountName.toLowerCase().includes(q)
+          || String(r.o.ticket).includes(q);
+      })
+    : [];
+
+  /**
+   * Put the position into the sentence: the symbol, then the ticket.
+   *
+   * The ticket alone is what the assistant acts on and is meaningless to
+   * read back; the symbol in front of it makes the sent message say what
+   * it did without having to look the number up again.
+   */
+  const pickOrder = (r: { o: Order; accountName: string }) => {
+    if (!at) return;
+    const box = boxRef.current;
+    const caret = box?.selectionStart ?? draft.length;
+    const label = `${r.o.symbol} #${r.o.ticket}`;
+    setDraft(draft.slice(0, at.at) + label + ' ' + draft.slice(caret));
+    setAt(null);
+    const to = at.at + label.length + 1;
+    requestAnimationFrame(() => { box?.focus(); box?.setSelectionRange(to, to); });
   };
 
   /**
@@ -546,15 +621,15 @@ export const AiSheet = () => {
    * before anything is sent, and even then the answer comes back as a card
    * with a CONFIRM button on it. Nothing here places an order by itself.
    */
-  const DESK: { do_: boolean; label: string; text: string }[] = [
-    { do_: false, label: '📊 สรุปพอท',        text: 'สรุปพอทนี้ให้หน่อย' },
-    { do_: false, label: '⚠️ ไม้ไม่มี SL',     text: 'ไม้ไหนไม่มี SL บ้าง' },
-    { do_: false, label: '⚖️ buy/sell กี่ lot', text: 'ตอนนี้ buy กี่ lot sell กี่ lot สุทธิเท่าไหร่' },
-    { do_: false, label: '📉 ไม้ขาดทุน',       text: 'ไม้ไหนขาดทุนอยู่บ้าง เรียงจากมากไปน้อย' },
-    { do_: true,  label: '🛡️ ใส่ SL ให้ไม้ที่ไม่มี', text: 'ไม้ไหนไม่มี SL ใส่ให้หน่อย ห่างจากราคาเข้า 500 จุด' },
-    { do_: true,  label: '🔓 เลื่อน SL มาจุดเข้า', text: 'ไม้ที่กำไรแล้ว เลื่อน SL มาที่ราคาเข้าให้หมด' },
-    { do_: true,  label: '✂️ ปิดครึ่ง',        text: 'ปิดครึ่งนึงของไม้ #' },
-    { do_: true,  label: '💰 เก็บกำไร',        text: 'ปิดไม้ที่กำไรเกิน 50 ดอลทั้งหมด' },
+  const DESK: { do_: boolean; icon: ReactNode; label: string; text: string }[] = [
+    { do_: false, icon: <IconSummary size={17} />,   label: t('ai.cmd_summary'),    text: t('ai.cmd_summary_q') },
+    { do_: false, icon: <IconShieldOff size={17} />, label: t('ai.cmd_nosl'),       text: t('ai.cmd_nosl_q') },
+    { do_: false, icon: <IconScale size={17} />,     label: t('ai.cmd_exposure'),   text: t('ai.cmd_exposure_q') },
+    { do_: false, icon: <IconTrendDown size={17} />, label: t('ai.cmd_losing'),     text: t('ai.cmd_losing_q') },
+    { do_: true,  icon: <IconShield size={17} />,    label: t('ai.cmd_setsl'),      text: t('ai.cmd_setsl_q') },
+    { do_: true,  icon: <IconBreakEven size={17} />, label: t('ai.cmd_breakeven'),  text: t('ai.cmd_breakeven_q') },
+    { do_: true,  icon: <IconHalf size={17} />,      label: t('ai.cmd_half'),       text: t('ai.cmd_half_q') },
+    { do_: true,  icon: <IconTrendUp size={17} />,   label: t('ai.cmd_takeprofit'), text: t('ai.cmd_takeprofit_q') },
   ];
   const [desk, setDesk] = useState(false);
 
@@ -770,7 +845,7 @@ export const AiSheet = () => {
                 marginTop: '12px',
                 fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-micro)',
                 color: 'var(--text-muted)',
-              }}>{t('ai.slash_hint')}</div>
+              }}>{t('ai.slash_hint')}<br />{t('ai.order_hint')}</div>
             )}
           </div>
         )}
@@ -1005,6 +1080,44 @@ export const AiSheet = () => {
         </div>
       )}
 
+      {/* Typing "@" offers the open positions. Two lines a row: at 430px
+          one line of symbol, side, lots, account and an eleven-digit
+          ticket squeezed the symbol — the thing being looked for — to
+          nothing, the same way the pending rows did. */}
+      {at && picks.length === 0 && (
+        <div className="ai-pick" role="listbox" aria-label={t('ai.pick_order')}>
+          {orderPicks.length === 0 && (
+            <div className="ai-pick-empty">{t('ai.no_orders')}</div>
+          )}
+          {orderPicks.map((r, i) => (
+            <button
+              key={`${r.accountNumber}-${r.o.ticket}`}
+              role="option"
+              aria-selected={i === hi}
+              // Click, for every reason the account list below gives.
+              onClick={() => pickOrder(r)}
+              className={i === hi ? 'ai-ord-row ai-pick-on' : 'ai-ord-row'}
+            >
+              <span className="ai-ord-top">
+                <span className="ai-ord-sym">{r.o.symbol}</span>
+                <span className={r.o.type === 'SELL' ? 'ai-ord-sell' : 'ai-ord-buy'}>
+                  {r.o.type === 'SELL' ? 'sell' : 'buy'} {Number(r.o.lots ?? 0).toFixed(2)}
+                </span>
+                <span className="ai-ord-gap" />
+                <span className={Number(r.o.profit ?? 0) < 0 ? 'ai-ord-loss' : 'ai-ord-win'}>
+                  {Number(r.o.profit ?? 0) < 0 ? '' : '+'}{Number(r.o.profit ?? 0).toFixed(2)}
+                </span>
+              </span>
+              <span className="ai-ord-sub">
+                <span className="ai-ord-acc">{r.accountName}</span>
+                <span className="ai-ord-gap" />
+                <span className="ai-ord-tic">#{r.o.ticket}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Typing "/" offers the accounts by name */}
       {picks.length > 0 && (
         <div className="ai-pick" role="listbox" aria-label={t('ai.pick_account')}>
@@ -1041,26 +1154,32 @@ export const AiSheet = () => {
       {/* The order desk, above the composer for the same reason the account
           list is: it pushes the conversation up rather than covering it,
           and it can never end up behind the phone keyboard. */}
-      {desk && picks.length === 0 && (
+      {desk && picks.length === 0 && !at && (
         <div className="ai-desk">
-          <div className="ai-desk-head">ถาม — ส่งเลย</div>
+          <div className="ai-desk-head">{t('ai.desk_ask')}</div>
           {DESK.filter(c => !c.do_).map(c => (
             <button key={c.label} className="ai-desk-row" disabled={busy}
               onClick={() => { setDesk(false); void send(c.text); }}>
+              <span className="ai-desk-ico">{c.icon}</span>
               <span className="ai-desk-lbl">{c.label}</span>
             </button>
           ))}
-          <div className="ai-desk-head">สั่งทำ — ใส่ในช่องพิมให้ ยังไม่ส่ง</div>
+          <div className="ai-desk-head">{t('ai.desk_do')}</div>
           {DESK.filter(c => c.do_).map(c => (
             <button key={c.label} className="ai-desk-row ai-desk-do" disabled={busy}
               onClick={() => {
                 // Written into the box, never sent. The account still has
                 // to be chosen and the words read first.
                 setDesk(false);
-                const text = c.text + ' ';
+                // A command that needs a ticket ends in "@", which is the
+                // picker's own trigger: the list opens on it, so the one
+                // field nobody can recite is chosen rather than typed. A
+                // trailing space would break the match it depends on.
+                const text = c.text.endsWith('@') ? c.text : c.text + ' ';
                 onDraft(text, text.length);
                 boxRef.current?.focus();
               }}>
+              <span className="ai-desk-ico">{c.icon}</span>
               <span className="ai-desk-lbl">{c.label}</span>
             </button>
           ))}
@@ -1072,9 +1191,9 @@ export const AiSheet = () => {
         <button
           className={desk ? 'ai-plus ai-plus-on' : 'ai-plus'}
           onClick={() => setDesk(d => !d)}
-          title="คำสั่ง" aria-label="คำสั่ง"
+          title={t('ai.desk')} aria-label={t('ai.desk')}
           style={{ border: 0 }}
-        ><IconSpark size={19} /></button>
+        ><IconBolt size={19} /></button>
         {/* A label, not a button that calls click() on a hidden input: iOS
             only opens the picker for a real activation, and a programmatic
             click from pointerdown is not one — the button did nothing at
@@ -1115,6 +1234,14 @@ export const AiSheet = () => {
                 if (e.key === 'ArrowUp') { e.preventDefault(); setHi(h => (h - 1 + picks.length) % picks.length); return; }
                 if ((e.key === 'Enter' && !e.shiftKey && !typing) || e.key === 'Tab') {
                   e.preventDefault(); pick(picks[hi] ?? picks[0]); return;
+                }
+              }
+              if (orderPicks.length > 0) {
+                if (e.key === 'Escape') { e.preventDefault(); setAt(null); return; }
+                if (e.key === 'ArrowDown') { e.preventDefault(); setHi(h => (h + 1) % orderPicks.length); return; }
+                if (e.key === 'ArrowUp') { e.preventDefault(); setHi(h => (h - 1 + orderPicks.length) % orderPicks.length); return; }
+                if ((e.key === 'Enter' && !e.shiftKey && !typing) || e.key === 'Tab') {
+                  e.preventDefault(); pickOrder(orderPicks[hi] ?? orderPicks[0]!); return;
                 }
               }
               if (e.key !== 'Enter' || e.shiftKey || typing) return;
@@ -1426,6 +1553,45 @@ export const AiSheet = () => {
           cursor: pointer;
         }
         .ai-pick-row:last-child { border-bottom: 0; }
+        /* An open position, two lines: the symbol and the side on top, the
+           account and the ticket underneath. */
+        .ai-ord-row {
+          display: flex;
+          flex-direction: column;
+          gap: 3px;
+          width: 100%;
+          min-height: 44px;
+          padding: 8px 12px;
+          background: none;
+          border: 0;
+          border-bottom: 1px solid var(--border);
+          text-align: left;
+          cursor: pointer;
+        }
+        .ai-ord-row:last-child { border-bottom: 0; }
+        .ai-ord-top, .ai-ord-sub { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+        .ai-ord-gap { flex: 1; }
+        .ai-ord-sym {
+          color: var(--text); font-size: 15px;
+          overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .ai-ord-buy  { color: var(--accent-blue); font-size: 13px; flex-shrink: 0; }
+        .ai-ord-sell { color: var(--warning, #f59e0b); font-size: 13px; flex-shrink: 0; }
+        .ai-ord-win  { color: var(--success, #34d399); font-size: 13px; flex-shrink: 0; font-variant-numeric: tabular-nums; }
+        .ai-ord-loss { color: var(--danger, #f87171); font-size: 13px; flex-shrink: 0; font-variant-numeric: tabular-nums; }
+        .ai-ord-acc {
+          color: var(--text-dim); font-size: 12px;
+          overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .ai-ord-tic {
+          color: var(--text-muted); font-size: 12px; flex-shrink: 0;
+          font-variant-numeric: tabular-nums;
+        }
+        .ai-pick-empty {
+          padding: 12px;
+          font-family: var(--ff-body); font-size: var(--fs-body-sm);
+          color: var(--text-muted); text-align: center;
+        }
         .ai-pick-on { background: var(--bg-hover, rgba(255,255,255,0.06)); }
         .ai-pick-name {
           flex: 1;
@@ -1496,6 +1662,18 @@ export const AiSheet = () => {
            question, and the eye should know which is which before the
            thumb lands. */
         .ai-desk-do { border-left-color: var(--warning, #f59e0b); }
+        /* The mark takes the colour of the group it is in, and the labels
+           line up because every icon reserves the same width. */
+        .ai-desk-ico {
+          flex-shrink: 0;
+          width: 22px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin-right: 10px;
+          color: var(--accent-blue);
+        }
+        .ai-desk-do .ai-desk-ico { color: var(--warning, #f59e0b); }
         .ai-desk-row:last-child { border-bottom: 0; }
         .ai-desk-lbl {
           flex: 1; min-width: 0;
