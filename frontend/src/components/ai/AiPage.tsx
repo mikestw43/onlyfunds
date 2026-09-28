@@ -982,10 +982,21 @@ export const AiSheet = () => {
               key={a.id}
               role="option"
               aria-selected={i === hi}
-              // Pointer down, and prevented: a tap that let the textarea
-              // blur first would shut the phone keyboard and scroll the
-              // sheet out from under the finger mid-tap.
-              onPointerDown={e => { e.preventDefault(); pick(a); }}
+              // Click, not pointerdown. Pointerdown fires the moment a
+              // finger lands, before there is any way to know whether it
+              // is a tap or the start of a scroll — so the list could not
+              // be scrolled at all, every touch picked whatever it landed
+              // on, and preventDefault on top of that killed the scroll
+              // gesture outright. Worse, picking unmounts the list, the
+              // sheet collapses, and the click that follows the finger
+              // lands on whatever moved under it — which is the send
+              // button, so a scroll attempt sent the message.
+              //
+              // A click only fires when the finger stays put, and it is
+              // the last event of the gesture, so nothing arrives after
+              // it to land anywhere else. The keyboard is put back by
+              // pick() rather than held open here.
+              onClick={() => pick(a)}
               className={i === hi ? 'ai-pick-row ai-pick-on' : 'ai-pick-row'}
             >
               <span className="ai-pick-name">{a.name}</span>
@@ -1322,6 +1333,11 @@ export const AiSheet = () => {
           flex-direction: column;
           max-height: 216px;
           overflow-y: auto;
+          /* The list scrolls under the finger, and only up and down — a
+             sideways drag belongs to the sheet, not to this. */
+          touch-action: pan-y;
+          -webkit-overflow-scrolling: touch;
+          overscroll-behavior: contain;
           border: 1px solid var(--border2);
           border-radius: var(--radius-sm);
           background: var(--bg-card);
