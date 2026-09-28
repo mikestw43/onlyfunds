@@ -1213,6 +1213,13 @@ export const AiSheet = () => {
       <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end', minWidth: 0 }}>
         <button
           className={desk ? 'ai-plus ai-plus-on' : 'ai-plus'}
+          // Same guard the send button has, and needed for the same
+          // reason. With the box focused, letting this steal the focus
+          // blurs it, the footer swaps ai-foot-kb for ai-foot, its
+          // padding grows, and the button has moved out from under the
+          // finger before the click lands — so the first tap only shut
+          // the keyboard and a second was needed to open anything.
+          onPointerDown={keepKeyboard}
           onClick={() => setDesk(d => !d)}
           title={t('ai.desk')} aria-label={t('ai.desk')}
           style={{ border: 0 }}
@@ -1224,7 +1231,16 @@ export const AiSheet = () => {
             the input and needs no script.
             accept="image/*" with no capture attribute is what makes the
             phone offer the camera and the library both. */}
-        <label className="ai-plus" title={t('ai.attach')} aria-label={t('ai.attach')}>
+        <label
+          className="ai-plus"
+          title={t('ai.attach')}
+          aria-label={t('ai.attach')}
+          // Keeps the box focused, as above. preventDefault here stops the
+          // focus moving and nothing else: the click that follows still
+          // reaches the input, which is what opens the picker, and which
+          // iOS requires to be a real activation.
+          onPointerDown={keepKeyboard}
+        >
           <input
             type="file"
             accept="image/*"
