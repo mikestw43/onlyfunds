@@ -503,8 +503,12 @@ export const AiSheet = () => {
   const tapDone = useRef(false);
   /** Past this, the finger was going somewhere, not choosing something. */
   const TAP_SLOP = 10;
-  const onTap = (fn: () => void) => ({
+  const onTap = (fn: () => void, hold = false) => ({
     onPointerDown: (e: React.PointerEvent<HTMLElement>) => {
+      // `hold` keeps the box focused, so the keyboard stays where it is and
+      // so does this whole footer. Only for things that are not scrollable
+      // lists: on a list, preventDefault cancels the scroll gesture.
+      if (hold) e.preventDefault();
       tapArmed.current = { id: e.pointerId, x: e.clientX, y: e.clientY };
       try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* not capturable; click still covers it */ }
     },
@@ -708,34 +712,23 @@ export const AiSheet = () => {
     { do_: true,  icon: <IconHalf size={17} />,      label: t('ai.cmd_half'),       text: t('ai.cmd_half_q') },
     { do_: true,  icon: <IconTrendUp size={17} />,   label: t('ai.cmd_takeprofit'), text: t('ai.cmd_takeprofit_q') },
   ];
-  const [desk, setDesk] = useState(false);
-  /** Asked for, but waiting for the keyboard to finish getting out of the way. */
-  const [deskWaiting, setDeskWaiting] = useState(false);
-
   /**
-   * The desk opens after the keyboard has gone, not while it is going.
+   * Open where it stands, and leave the keyboard alone.
    *
-   * Blurring the box frees the half of the screen the list wants, but the
-   * keyboard takes about a quarter of a second to retract and the whole
-   * footer travels with it. Opening the list in the same breath put it
-   * under a finger that was still on its way to where the list had been
-   * drawn — which is how tapping the button alone could send a question.
+   * Three attempts at this went the other way: the list wanted the whole
+   * screen, so opening it put the keyboard away, so opening it moved the
+   * footer by the height of a keyboard — and a menu that moves as it opens
+   * cannot be tapped reliably by anyone. Every fault reported came from
+   * that, and no amount of event plumbing could fix a design where the act
+   * of opening the menu moved the menu.
    *
-   * So: blur, wait for visualViewport to report the keyboard gone, and
-   * only then draw it. The timeout is for the case where it never
-   * reports — a hardware keyboard, a desktop, a browser that does not
-   * fire the event — where there was nothing to wait for anyway.
+   * The account list one block down had the answer all along: it appears
+   * with the keyboard up, in whatever room is left, short and scrollable,
+   * and nothing moves. Nobody has ever reported it mis-tapping. The desk
+   * does the same now — the height it is given adapts to the room there
+   * is, rather than the room being made for it.
    */
-  useEffect(() => {
-    if (!deskWaiting) return;
-    const show = () => {
-      setDeskWaiting(false);
-      setDesk(true);
-    };
-    if (!viewport?.keyboard) { show(); return; }
-    const t = setTimeout(show, 450);
-    return () => clearTimeout(t);
-  }, [deskWaiting, viewport?.keyboard]);
+  const [desk, setDesk] = useState(false);
 
   if (!open) return null;
 
@@ -1309,19 +1302,7 @@ export const AiSheet = () => {
           // padding grows, and the button has moved out from under the
           // finger before the click lands — so the first tap only shut
           // the keyboard and a second was needed to open anything.
-          {...onTap(() => {
-            if (desk || deskWaiting) { setDesk(false); setDeskWaiting(false); return; }
-            const box = boxRef.current;
-            // With the keyboard up, put it away first and let the effect
-            // above draw the list once everything has stopped moving. With
-            // it already down there is nothing to wait for.
-            if (document.activeElement === box) {
-              box?.blur();
-              setDeskWaiting(true);
-            } else {
-              setDesk(true);
-            }
-          })}
+          {...onTap(() => setDesk(d => !d), true)}
           title={t('ai.desk')} aria-label={t('ai.desk')}
           style={{ border: 0 }}
         ><IconBolt size={19} /></button>
