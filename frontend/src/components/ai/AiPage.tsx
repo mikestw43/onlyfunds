@@ -536,6 +536,28 @@ export const AiSheet = () => {
     },
   });
 
+  /**
+   * A command goes into the box. It is never sent, and it never erases.
+   *
+   * Two faults, one cause: the command replaced the draft, so an account
+   * picked a moment earlier with "/" was wiped by the command that needed
+   * it; and half the commands sent themselves on the tap, which is the
+   * wrong thing to do on a list a thumb is scrolling past. Nothing on this
+   * panel sends now — it writes, and the send button is still the send
+   * button.
+   */
+  const pickCommand = (text: string) => {
+    setDesk(false);
+    const head = draft.trimEnd();
+    // A command that needs a ticket ends in "@", which is the order
+    // picker's own trigger: the list opens on it, so the one field nobody
+    // can recite is chosen rather than typed. A trailing space after it
+    // would break the match it depends on.
+    const next = (head ? head + ' ' : '') + text + (text.endsWith('@') ? '' : ' ');
+    onDraft(next, next.length);
+    boxRef.current?.focus();
+  };
+
   /** A "/" that begins a word, and whatever has been typed after it. */
   const SLASH = /(?:^|\s)\/([^\s/]*)$/;
 
@@ -621,7 +643,9 @@ export const AiSheet = () => {
     setDraft(draft.slice(0, at.at) + label + ' ' + draft.slice(caret));
     setAt(null);
     const to = at.at + label.length + 1;
-    requestAnimationFrame(() => { box?.focus(); box?.setSelectionRange(to, to); });
+    // Twice, for the reason pick() gives.
+    box?.focus();
+    setTimeout(() => { box?.focus(); box?.setSelectionRange(to, to); }, 0);
   };
 
   /**
@@ -658,8 +682,16 @@ export const AiSheet = () => {
     setDraft(draft.slice(0, slash.at) + label + ' ' + draft.slice(caret));
     setSlash(null);
     const to = slash.at + label.length + 1;
-    // After React has written the new value, or the caret lands in the old one.
-    requestAnimationFrame(() => { box?.focus(); box?.setSelectionRange(to, to); });
+    // Twice, and the second one after the click, not on the next frame.
+    //
+    // The box is never blurred by the tap itself — capture sees to that.
+    // What takes the keyboard away is the click that follows: by the time
+    // it is dispatched the list has unmounted, the footer has collapsed,
+    // and the click lands on whatever is in that spot now, which is a
+    // message bubble. Clicking something unfocusable clears the focus. A
+    // frame is too early to win it back; a timeout runs after the click.
+    box?.focus();
+    setTimeout(() => { box?.focus(); box?.setSelectionRange(to, to); }, 0);
   };
 
   /** Abandon the question in flight. */
@@ -1262,32 +1294,21 @@ export const AiSheet = () => {
           // composer under the list.
           style={viewport ? { maxHeight: Math.max(150, viewport.height - 240) } : undefined}
         >
-          <div className="ai-desk-head">{t('ai.desk_ask')}</div>
-          {DESK.filter(c => !c.do_).map(c => (
-            <button key={c.label} className="ai-desk-row" disabled={busy}
-              {...onTap(() => { setDesk(false); void send(c.text); })}>
-              <span className="ai-desk-ico">{c.icon}</span>
-              <span className="ai-desk-lbl">{c.label}</span>
-            </button>
-          ))}
-          <div className="ai-desk-head">{t('ai.desk_do')}</div>
-          {DESK.filter(c => c.do_).map(c => (
-            <button key={c.label} className="ai-desk-row ai-desk-do" disabled={busy}
-              {...onTap(() => {
-                // Written into the box, never sent. The account still has
-                // to be chosen and the words read first.
-                setDesk(false);
-                // A command that needs a ticket ends in "@", which is the
-                // picker's own trigger: the list opens on it, so the one
-                // field nobody can recite is chosen rather than typed. A
-                // trailing space would break the match it depends on.
-                const text = c.text.endsWith('@') ? c.text : c.text + ' ';
-                onDraft(text, text.length);
-                boxRef.current?.focus();
-              })}>
-              <span className="ai-desk-ico">{c.icon}</span>
-              <span className="ai-desk-lbl">{c.label}</span>
-            </button>
+          {([false, true] as const).map(group => (
+            <div key={String(group)}>
+              <div className="ai-desk-head">{group ? t('ai.desk_do') : t('ai.desk_ask')}</div>
+              {DESK.filter(c => c.do_ === group).map(c => (
+                <button
+                  key={c.label}
+                  className={group ? 'ai-desk-row ai-desk-do' : 'ai-desk-row'}
+                  disabled={busy}
+                  {...onTap(() => pickCommand(c.text))}
+                >
+                  <span className="ai-desk-ico">{c.icon}</span>
+                  <span className="ai-desk-lbl">{c.label}</span>
+                </button>
+              ))}
+            </div>
           ))}
         </div>
       )}

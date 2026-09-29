@@ -683,7 +683,7 @@
   "trade.sym_all": "Everything else",
   "trade.sym_hint": "Tap or type",
   "ai.desk": "Commands",
-  "ai.desk_ask": "Ask — sends straight away",
+  "ai.desk_ask": "Ask — written into the box, not sent",
   "ai.desk_do": "Do — written into the box, not sent",
   "ai.cmd_summary": "Account summary",
   "ai.cmd_summary_q": "Give me a summary of this account",
