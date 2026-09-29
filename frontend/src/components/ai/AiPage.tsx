@@ -478,6 +478,60 @@ export const AiSheet = () => {
    */
   const keepKeyboard = (e: React.PointerEvent) => e.preventDefault();
 
+  /**
+   * A tap belongs to the thing it began on, whatever moves underneath.
+   *
+   * Everything in this footer sits above the keyboard, the keyboard opens
+   * and closes because of these very taps, and it takes a quarter of a
+   * second to do it — during which the footer travels the height of the
+   * keyboard. A browser decides what was clicked by looking at what is
+   * under the finger when it lifts, so by then the answer is whatever slid
+   * into that spot. Every fault reported here is that one fact wearing a
+   * different hat: the account row that needs tapping twice, the button
+   * that opens nothing, the command that sends itself.
+   *
+   * Capturing the pointer settles it at the start instead of the end. The
+   * element that the finger went down on receives the release, wherever
+   * the pixels have gone, and an element that arrives under the finger
+   * afterwards cannot receive anything. A drag that turns into a scroll
+   * fires pointercancel, which disarms it — so a list still scrolls.
+   *
+   * The click handler stays for keyboards and for any browser that does
+   * not capture; the flag keeps the two from both firing.
+   */
+  const tapArmed = useRef<{ id: number; x: number; y: number } | null>(null);
+  const tapDone = useRef(false);
+  /** Past this, the finger was going somewhere, not choosing something. */
+  const TAP_SLOP = 10;
+  const onTap = (fn: () => void) => ({
+    onPointerDown: (e: React.PointerEvent<HTMLElement>) => {
+      tapArmed.current = { id: e.pointerId, x: e.clientX, y: e.clientY };
+      try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* not capturable; click still covers it */ }
+    },
+    // A drag down the list is a scroll, not a choice. Touch says so itself
+    // by firing pointercancel once it commits to scrolling, but a mouse
+    // never does — and a list dragged with a mouse must not pick either.
+    onPointerMove: (e: React.PointerEvent<HTMLElement>) => {
+      const t = tapArmed.current;
+      if (!t || t.id !== e.pointerId) return;
+      if (Math.abs(e.clientX - t.x) > TAP_SLOP || Math.abs(e.clientY - t.y) > TAP_SLOP) {
+        tapArmed.current = null;
+        tapDone.current = true;   // and the click this drag may end in is not a choice either
+      }
+    },
+    onPointerUp: (e: React.PointerEvent<HTMLElement>) => {
+      if (tapArmed.current?.id !== e.pointerId) return;
+      tapArmed.current = null;
+      tapDone.current = true;
+      fn();
+    },
+    onPointerCancel: () => { tapArmed.current = null; tapDone.current = true; },
+    onClick: () => {
+      if (tapDone.current) { tapDone.current = false; return; }
+      fn();
+    },
+  });
+
   /** A "/" that begins a word, and whatever has been typed after it. */
   const SLASH = /(?:^|\s)\/([^\s/]*)$/;
 
@@ -657,8 +711,6 @@ export const AiSheet = () => {
   const [desk, setDesk] = useState(false);
   /** Asked for, but waiting for the keyboard to finish getting out of the way. */
   const [deskWaiting, setDeskWaiting] = useState(false);
-  /** When it appeared, so a finger still travelling cannot land on a row. */
-  const deskShownAt = useRef(0);
 
   /**
    * The desk opens after the keyboard has gone, not while it is going.
@@ -678,7 +730,6 @@ export const AiSheet = () => {
     if (!deskWaiting) return;
     const show = () => {
       setDeskWaiting(false);
-      deskShownAt.current = Date.now();
       setDesk(true);
     };
     if (!viewport?.keyboard) { show(); return; }
@@ -1148,7 +1199,7 @@ export const AiSheet = () => {
               role="option"
               aria-selected={i === hi}
               // Click, for every reason the account list below gives.
-              onClick={() => pickOrder(r)}
+              {...onTap(() => pickOrder(r))}
               className={i === hi ? 'ai-ord-row ai-pick-on' : 'ai-ord-row'}
             >
               <span className="ai-ord-top">
@@ -1193,7 +1244,7 @@ export const AiSheet = () => {
               // the last event of the gesture, so nothing arrives after
               // it to land anywhere else. The keyboard is put back by
               // pick() rather than held open here.
-              onClick={() => pick(a)}
+              {...onTap(() => pick(a))}
               className={i === hi ? 'ai-pick-row ai-pick-on' : 'ai-pick-row'}
             >
               <span className="ai-pick-name">{a.name}</span>
@@ -1221,14 +1272,7 @@ export const AiSheet = () => {
           <div className="ai-desk-head">{t('ai.desk_ask')}</div>
           {DESK.filter(c => !c.do_).map(c => (
             <button key={c.label} className="ai-desk-row" disabled={busy}
-              onClick={() => {
-                // A tap landing within a moment of the panel appearing is
-                // the tap that opened it, still finishing. Sending a
-                // question off the back of that is the one mistake here
-                // that reaches the outside world.
-                if (Date.now() - deskShownAt.current < 300) return;
-                setDesk(false); void send(c.text);
-              }}>
+              {...onTap(() => { setDesk(false); void send(c.text); })}>
               <span className="ai-desk-ico">{c.icon}</span>
               <span className="ai-desk-lbl">{c.label}</span>
             </button>
@@ -1236,8 +1280,7 @@ export const AiSheet = () => {
           <div className="ai-desk-head">{t('ai.desk_do')}</div>
           {DESK.filter(c => c.do_).map(c => (
             <button key={c.label} className="ai-desk-row ai-desk-do" disabled={busy}
-              onClick={() => {
-                if (Date.now() - deskShownAt.current < 300) return;
+              {...onTap(() => {
                 // Written into the box, never sent. The account still has
                 // to be chosen and the words read first.
                 setDesk(false);
@@ -1248,7 +1291,7 @@ export const AiSheet = () => {
                 const text = c.text.endsWith('@') ? c.text : c.text + ' ';
                 onDraft(text, text.length);
                 boxRef.current?.focus();
-              }}>
+              })}>
               <span className="ai-desk-ico">{c.icon}</span>
               <span className="ai-desk-lbl">{c.label}</span>
             </button>
@@ -1266,8 +1309,7 @@ export const AiSheet = () => {
           // padding grows, and the button has moved out from under the
           // finger before the click lands — so the first tap only shut
           // the keyboard and a second was needed to open anything.
-          onPointerDown={keepKeyboard}
-          onClick={() => {
+          {...onTap(() => {
             if (desk || deskWaiting) { setDesk(false); setDeskWaiting(false); return; }
             const box = boxRef.current;
             // With the keyboard up, put it away first and let the effect
@@ -1277,10 +1319,9 @@ export const AiSheet = () => {
               box?.blur();
               setDeskWaiting(true);
             } else {
-              deskShownAt.current = Date.now();
               setDesk(true);
             }
-          }}
+          })}
           title={t('ai.desk')} aria-label={t('ai.desk')}
           style={{ border: 0 }}
         ><IconBolt size={19} /></button>
