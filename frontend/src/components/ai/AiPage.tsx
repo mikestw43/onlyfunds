@@ -117,6 +117,26 @@ export const AiSheet = () => {
   const marksRef = useRef<HTMLDivElement>(null);
 
   /**
+   * How tall the footer is, so the jump button can sit above it.
+   *
+   * It used to be told 78px, then 76px with the keyboard up — numbers
+   * that were right for a composer of one row. Giving the box its own
+   * row made the footer taller and left the button sitting on top of the
+   * last message. A number that has to be re-guessed every time the
+   * layout changes is a number the layout should be asked for instead.
+   */
+  const footRef = useRef<HTMLDivElement>(null);
+  const [footH, setFootH] = useState(0);
+  useEffect(() => {
+    const el = footRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => setFootH(el.offsetHeight));
+    ro.observe(el);
+    setFootH(el.offsetHeight);
+    return () => ro.disconnect();
+  });
+
+  /**
    * Typing "/" offers the accounts.
    *
    * Naming the account is not optional — the assistant is told never to
@@ -1209,9 +1229,10 @@ export const AiSheet = () => {
           onClick={() => toEnd()}
           aria-label={t('ai.to_latest')}
           title={t('ai.to_latest')}
-          // The composer loses its safe-area padding while the keyboard is
-          // up, so the button follows it down.
-          style={viewport?.keyboard || writing ? { bottom: '76px' } : undefined}
+          // Measured, not guessed: it clears whatever the footer currently
+          // is, which changes with the keyboard, with a photo attached and
+          // with the box growing to three lines.
+          style={footH ? { bottom: `${footH + 12}px` } : undefined}
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M12 5v14M6 13l6 6 6-6" />
@@ -1223,7 +1244,7 @@ export const AiSheet = () => {
           clear of — the keyboard is over it — so the safe-area padding
           under the composer is just a strip of empty sheet between the
           box and the keys. */}
-      <div className={viewport?.keyboard || writing ? 'ai-foot ai-foot-kb' : 'ai-foot'}>
+      <div ref={footRef} className={viewport?.keyboard || writing ? 'ai-foot ai-foot-kb' : 'ai-foot'}>
       {/* Photos waiting to be sent */}
       {photos.length > 0 && (
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
@@ -1375,7 +1396,6 @@ export const AiSheet = () => {
           // the keyboard and a second was needed to open anything.
           {...onTap(() => setDesk(d => !d), true)}
           title={t('ai.desk')} aria-label={t('ai.desk')}
-          style={{ border: 0 }}
         ><IconBolt size={19} /></button>
         {/* A label, not a button that calls click() on a hidden input: iOS
             only opens the picker for a real activation, and a programmatic
@@ -1711,9 +1731,14 @@ export const AiSheet = () => {
         .ai-composer > *:not(.ai-box-wrap) { order: 2; }
         /* Send stays on the right of its own row. */
         .ai-composer > .ai-send { margin-left: auto; }
-        /* In the row it is an ordinary button, not a thing pinned inside
-           the box. */
-        .ai-mic.ai-mic-row { position: static; }
+        /* In the row it is an ordinary button, not a thing pinned inside the
+           box — and the same size as the two beside it. It was 32px when it
+           lived in the corner of the box, where nothing sat next to it to
+           disagree with. */
+        .ai-mic.ai-mic-row {
+          position: static;
+          width: 38px; height: 38px;
+        }
         .ai-mic {
           /* Pinned to the bottom, not the middle: the box grows upward as
              the question gets longer and a centred button would drift. */
