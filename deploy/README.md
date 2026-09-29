@@ -672,7 +672,9 @@ if [ ! -d "$DEST" ]; then
   exit 1
 fi
 
-exec >> "$DEST/onlyfunds-sync.log" 2>&1
+LOG="$DEST/onlyfunds-sync.log"
+exec >> "$LOG"
+exec 2>> "$LOG"
 echo "=== $(date) ==="
 echo "share=$DEST user=$(whoami)"
 rsync -az --delete --timeout=600 -e "ssh -o BatchMode=yes" ofbackup@168.144.251.72:/ "$DEST/OnlyFunds/"
@@ -680,6 +682,16 @@ rc=$?
 echo "exit=$rc"
 exit $rc
 ```
+
+> ✂️ **ไม่มีเครื่องหมาย `&` ในสคริปต์นี้ ตั้งใจ** — ปกติจะเขียน `2>&1` บรรทัดเดียว
+> แต่เวลาคัดลอกผ่านเว็บหรือแชท `&` มักโดนแปลงเป็น `&amp;` และ `>` เป็น `&gt;`
+> พอวางลง DSM จะได้ `2&gt;&amp;1` ซึ่งเชลล์อ่านว่า **Syntax error: "&" unexpected**
+> → ตายตั้งแต่บรรทัดแรก ไม่มี log ไม่มีอะไร เหมือนกับดักชั้นแรกเป๊ะ
+> เวอร์ชันนี้แยกเป็น `exec >> "$LOG"` กับ `exec 2>> "$LOG"` สองบรรทัด ได้ผลเท่ากัน
+> แต่ไม่มี `&` ให้เพี้ยน
+>
+> **หลังวางลง DSM ทุกครั้ง ให้กวาดตาดูว่ามี `&gt;` หรือ `&amp;` โผล่มั้ย** ถ้ามีคือ
+> เพี้ยน ต้องแก้เป็น `>` กับ `&`
 - ติ๊ก **Send run details by email** + **only when the script terminates
   abnormally** เผื่อวันไหนพัง จะได้รู้
 
