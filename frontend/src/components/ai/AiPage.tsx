@@ -80,6 +80,9 @@ const topGap = (): number => {
   return Math.max(24, Math.round(inset) + 8);
 };
 
+/** A name can contain anything, and it is going into a regular expression. */
+const esc = (v: string): string => v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 export const AiSheet = () => {
   const t = useTranslation();
   const addToast = useUIStore(st => st.addToast);
@@ -111,6 +114,7 @@ export const AiSheet = () => {
   const [writing, setWriting] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
   const boxRef = useRef<HTMLTextAreaElement>(null);
+  const marksRef = useRef<HTMLDivElement>(null);
 
   /**
    * Typing "/" offers the accounts.
@@ -558,6 +562,35 @@ export const AiSheet = () => {
     boxRef.current?.focus();
   };
 
+  /**
+   * The draft, cut into the parts worth colouring.
+   *
+   * A textarea cannot colour a word inside itself, so the marks are drawn
+   * on a layer behind it carrying the same text in the same font, box and
+   * padding, with the textarea's own text transparent over the top. Only
+   * the appearance lives there: the value, the caret, the selection and
+   * every event stay with the textarea, so the worst a mistake here can
+   * do is look wrong.
+   *
+   * Marked: an account by name, and a ticket by its "#". Both are things
+   * a picker wrote rather than things anyone typed, and both are what the
+   * eye hunts for when reading the line back.
+   */
+  const marked = useMemo(() => {
+    const names = accounts.map(a => a.name).filter(Boolean)
+      .sort((a, b) => b.length - a.length).map(esc);
+    const re = new RegExp(`(${[...names, '#\\d{4,}'].join('|')})`, 'gi');
+    const out: { text: string; mark: boolean }[] = [];
+    let last = 0;
+    for (let m = re.exec(draft); m; m = re.exec(draft)) {
+      if (m.index > last) out.push({ text: draft.slice(last, m.index), mark: false });
+      out.push({ text: m[0], mark: true });
+      last = m.index + m[0].length;
+    }
+    if (last < draft.length) out.push({ text: draft.slice(last), mark: false });
+    return out;
+  }, [draft, accounts]);
+
   /** A "/" that begins a word, and whatever has been typed after it. */
   const SLASH = /(?:^|\s)\/([^\s/]*)$/;
 
@@ -604,12 +637,19 @@ export const AiSheet = () => {
    * longer ticket.
    */
   const namedAccount = useMemo(() => {
-    const hits = accounts
-      .map(a => String(a.accountNumber ?? ''))
-      .filter(n => n && new RegExp(`#${n}(?!\\d)`).test(draft));
-    // Longest wins, so one number that is a prefix of another cannot win
+    // By name now, since that is what the picker writes, and still by
+    // number for anything typed by hand or left over in an older draft.
+    // Longest first so one name or number contained in another cannot win
     // over the one actually written.
-    return hits.sort((a, b) => b.length - a.length)[0] ?? null;
+    const named = [...accounts]
+      .sort((a, b) => (b.name?.length ?? 0) - (a.name?.length ?? 0))
+      .find(a => a.name && draft.toLowerCase().includes(a.name.toLowerCase()));
+    if (named) return String(named.accountNumber ?? '');
+    const byNumber = accounts
+      .map(a => String(a.accountNumber ?? ''))
+      .filter(x => x && new RegExp(`#${x}(?!\\d)`).test(draft))
+      .sort((a, b) => b.length - a.length)[0];
+    return byNumber ?? null;
   }, [draft, accounts]);
 
   /**
@@ -678,7 +718,12 @@ export const AiSheet = () => {
     if (!slash) return;
     const box = boxRef.current;
     const caret = box?.selectionStart ?? draft.length;
-    const label = a.accountNumber ? `${a.name} #${a.accountNumber}` : a.name;
+    // The name alone. The number was there so the assistant had nothing to
+    // resolve, but resolving a name against the ACCOUNTS list it is given
+    // is a lookup, not a guess — the same argument the ticket rule makes —
+    // and eleven digits in the middle of a sentence is the thing being
+    // read every time the sentence is read back.
+    const label = a.name;
     setDraft(draft.slice(0, slash.at) + label + ' ' + draft.slice(caret));
     setSlash(null);
     const to = slash.at + label.length + 1;
@@ -1360,6 +1405,26 @@ export const AiSheet = () => {
               putting its ‹ › Done bar above the keyboard. iOS shows that
               bar for editable text too, so the trick bought nothing and
               cost the plain, well-behaved form control. */}
+          {/* The marks, behind the text. Same class as the box so the two
+              cannot drift apart: one set of font, padding, wrapping and
+              line-height rules, used twice. aria-hidden because the text
+              is already readable in the box itself. */}
+          <div
+            className="ai-box ai-box-marks"
+            aria-hidden="true"
+            ref={marksRef}
+            // The mic pushes the box's text in from the right; the layer
+            // has to be pushed the same, or every line wraps in a
+            // different place from the one it is tracing.
+            style={{ paddingRight: mic.supported ? '42px' : '12px' }}
+          >
+            {marked.map((m, i) => m.mark
+              ? <mark key={i} className="ai-token">{m.text}</mark>
+              : <span key={i}>{m.text}</span>)}
+            {/* A trailing newline collapses without something after it, and
+                the layer then sits one line short of the box. */}
+            {'\u200b'}
+          </div>
           <textarea
             ref={boxRef}
             value={draft}
@@ -1394,6 +1459,7 @@ export const AiSheet = () => {
               e.preventDefault();
               void send(draft);
             }}
+            onScroll={e => { if (marksRef.current) marksRef.current.scrollTop = e.currentTarget.scrollTop; }}
             onCompositionStart={() => setTyping(true)}
             onCompositionEnd={() => setTyping(false)}
             onFocus={() => setWriting(true)}
@@ -1589,6 +1655,41 @@ export const AiSheet = () => {
           box-sizing: border-box;
           resize: none;
           overflow-wrap: anywhere;
+        }
+        /* The marks layer: the box's twin, one step behind it. It takes its
+           whole geometry from .ai-box, and overrides only what must differ. */
+        /* Both selectors name two classes on purpose. The element carries
+           .ai-box as well, and a single-class rule would be overridden by
+           whichever of the two the stylesheet happens to print last. */
+        .ai-box.ai-box-marks {
+          position: absolute; inset: 0;
+          z-index: 0;
+          pointer-events: none;
+          white-space: pre-wrap;
+          overflow: hidden;
+          color: transparent;
+          /* The fill lives here, at the back, so the marks sit on it. */
+          background: var(--bg-input);
+          border: 1px solid transparent;
+        }
+        /* The box sits over it and keeps its own text, its own caret and
+           its own selection — only its background goes, because that is
+           what would hide the marks. The layer paints the highlight and
+           nothing else; its copy of the text is there to put the highlight
+           in the right place and stays invisible. */
+        .ai-box:not(.ai-box-marks) {
+          position: relative; z-index: 1;
+          background: transparent;
+        }
+        .ai-token {
+          background: color-mix(in srgb, var(--accent-blue) 22%, transparent);
+          border-radius: 4px;
+          padding: 1px 0;
+          box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-blue) 22%, transparent);
+        }
+        /* Where color-mix is not understood, a plain tint rather than none. */
+        @supports not (background: color-mix(in srgb, red 50%, transparent)) {
+          .ai-token { background: rgba(96,165,250,.22); box-shadow: 0 0 0 2px rgba(96,165,250,.22); }
         }
         .ai-mic {
           /* Pinned to the bottom, not the middle: the box grows upward as
