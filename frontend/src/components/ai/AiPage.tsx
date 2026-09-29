@@ -1178,7 +1178,16 @@ export const AiSheet = () => {
           list is: it pushes the conversation up rather than covering it,
           and it can never end up behind the phone keyboard. */}
       {desk && picks.length === 0 && !at && (
-        <div className="ai-desk">
+        <div
+          className="ai-desk"
+          // vh is the whole screen; the keyboard covers part of it without
+          // resizing the window, so a panel sized in vh overflows the room
+          // it actually has and pushes the composer off the bottom.
+          // visualViewport is the part still visible. The subtraction is
+          // the sheet's own furniture: its header, the summary bar and the
+          // composer under the list.
+          style={viewport ? { maxHeight: Math.max(150, viewport.height - 240) } : undefined}
+        >
           <div className="ai-desk-head">{t('ai.desk_ask')}</div>
           {DESK.filter(c => !c.do_).map(c => (
             <button key={c.label} className="ai-desk-row" disabled={busy}
@@ -1220,7 +1229,19 @@ export const AiSheet = () => {
           // finger before the click lands — so the first tap only shut
           // the keyboard and a second was needed to open anything.
           onPointerDown={keepKeyboard}
-          onClick={() => setDesk(d => !d)}
+          onClick={() => {
+            const next = !desk;
+            setDesk(next);
+            // Two different jobs, and both are needed. preventDefault above
+            // holds the focus through the gesture, so the button is still
+            // under the finger when the click resolves — without it this
+            // took two taps. Blurring here, after it has resolved, gives
+            // the list the half of the screen the keyboard was holding:
+            // nothing here is typed, it is chosen. A "do" command focuses
+            // the box again on its way out, which is when a keyboard is
+            // wanted back.
+            if (next) boxRef.current?.blur();
+          }}
           title={t('ai.desk')} aria-label={t('ai.desk')}
           style={{ border: 0 }}
         ><IconBolt size={19} /></button>
