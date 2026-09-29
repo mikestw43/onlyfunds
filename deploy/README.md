@@ -658,9 +658,21 @@ User-defined script**
 - **Task Settings → Run command:** วางบรรทัดนี้
 
 ```
-exec >> /volume1/WebBackup/onlyfunds-sync.log 2>&1
+DEST=""
+for v in /volume1 /volume2 /volume3 /volume4; do
+  if [ -d "$v/WebBackup" ]; then DEST="$v/WebBackup"; break; fi
+done
+
+if [ -z "$DEST" ]; then
+  echo "WebBackup not found. Volumes on this NAS:"
+  ls -d /volume*/ 2>&1
+  exit 1
+fi
+
+exec >> "$DEST/onlyfunds-sync.log" 2>&1
 echo "=== $(date) ==="
-rsync -az --delete --timeout=600 -e "ssh -o BatchMode=yes" ofbackup@168.144.251.72:/ /volume1/WebBackup/OnlyFunds/
+echo "share=$DEST user=$(whoami)"
+rsync -az --delete --timeout=600 -e "ssh -o BatchMode=yes" ofbackup@168.144.251.72:/ "$DEST/OnlyFunds/"
 rc=$?
 echo "exit=$rc"
 exit $rc
@@ -685,6 +697,14 @@ exit $rc
 | `exit $rc` | **ขาดไม่ได้** ถ้าสคริปต์จบด้วย `echo` มันจะคืนค่า 0 เสมอ DSM เลย
   เห็นว่างานสำเร็จทุกคืนแม้ rsync จะพัง → เมลเตือนไม่มีวันถูกส่ง บรรทัดนี้ส่ง
   รหัสจริงของ rsync กลับไปให้ DSM |
+
+> ⚠️ **ทำไมต้องหาโฟลเดอร์เอง ไม่ใส่ `/volume1` ตรงๆ** — เวอร์ชันแรกเขียน
+> `/volume1/WebBackup` ตายตัว แล้วบรรทัดแรกของสคริปต์คือบรรทัดที่เปิดไฟล์ log
+> ถ้าแชร์ไม่ได้อยู่บน volume1 (NAS ที่มีหลาย volume หรือมี NVMe แยก) บรรทัดนั้น
+> จะล้มทันที **สคริปต์ตายตั้งแต่บรรทัดแรก ไม่มี log ไม่มีอะไรเลย** กด Run
+> ก็เงียบสนิท หาสาเหตุไม่เจอเพราะเครื่องมือที่ใช้หาสาเหตุคือสิ่งที่ตายไปพร้อมกัน
+> เวอร์ชันนี้ไล่หา volume เองก่อน แล้วค่อยเปิด log และถ้าหาไม่เจอจริงๆ มันจะ
+> พิมพ์รายชื่อ volume ที่มีออกมาให้ดูใน **Action → View Result** แทนที่จะเงียบ
 
 ไฟล์ log อยู่ **นอก** โฟลเดอร์ที่ sync (`/volume1/WebBackup/` ไม่ใช่ข้างใน
 `OnlyFunds/`) เพราะ `--delete` จะลบทุกอย่างในโฟลเดอร์ปลายทางที่ไม่มีอยู่ต้นทาง
