@@ -655,6 +655,36 @@ export const AiSheet = () => {
     { do_: true,  icon: <IconTrendUp size={17} />,   label: t('ai.cmd_takeprofit'), text: t('ai.cmd_takeprofit_q') },
   ];
   const [desk, setDesk] = useState(false);
+  /** Asked for, but waiting for the keyboard to finish getting out of the way. */
+  const [deskWaiting, setDeskWaiting] = useState(false);
+  /** When it appeared, so a finger still travelling cannot land on a row. */
+  const deskShownAt = useRef(0);
+
+  /**
+   * The desk opens after the keyboard has gone, not while it is going.
+   *
+   * Blurring the box frees the half of the screen the list wants, but the
+   * keyboard takes about a quarter of a second to retract and the whole
+   * footer travels with it. Opening the list in the same breath put it
+   * under a finger that was still on its way to where the list had been
+   * drawn — which is how tapping the button alone could send a question.
+   *
+   * So: blur, wait for visualViewport to report the keyboard gone, and
+   * only then draw it. The timeout is for the case where it never
+   * reports — a hardware keyboard, a desktop, a browser that does not
+   * fire the event — where there was nothing to wait for anyway.
+   */
+  useEffect(() => {
+    if (!deskWaiting) return;
+    const show = () => {
+      setDeskWaiting(false);
+      deskShownAt.current = Date.now();
+      setDesk(true);
+    };
+    if (!viewport?.keyboard) { show(); return; }
+    const t = setTimeout(show, 450);
+    return () => clearTimeout(t);
+  }, [deskWaiting, viewport?.keyboard]);
 
   if (!open) return null;
 
@@ -1191,7 +1221,14 @@ export const AiSheet = () => {
           <div className="ai-desk-head">{t('ai.desk_ask')}</div>
           {DESK.filter(c => !c.do_).map(c => (
             <button key={c.label} className="ai-desk-row" disabled={busy}
-              onClick={() => { setDesk(false); void send(c.text); }}>
+              onClick={() => {
+                // A tap landing within a moment of the panel appearing is
+                // the tap that opened it, still finishing. Sending a
+                // question off the back of that is the one mistake here
+                // that reaches the outside world.
+                if (Date.now() - deskShownAt.current < 300) return;
+                setDesk(false); void send(c.text);
+              }}>
               <span className="ai-desk-ico">{c.icon}</span>
               <span className="ai-desk-lbl">{c.label}</span>
             </button>
@@ -1200,6 +1237,7 @@ export const AiSheet = () => {
           {DESK.filter(c => c.do_).map(c => (
             <button key={c.label} className="ai-desk-row ai-desk-do" disabled={busy}
               onClick={() => {
+                if (Date.now() - deskShownAt.current < 300) return;
                 // Written into the box, never sent. The account still has
                 // to be chosen and the words read first.
                 setDesk(false);
@@ -1230,17 +1268,18 @@ export const AiSheet = () => {
           // the keyboard and a second was needed to open anything.
           onPointerDown={keepKeyboard}
           onClick={() => {
-            const next = !desk;
-            setDesk(next);
-            // Two different jobs, and both are needed. preventDefault above
-            // holds the focus through the gesture, so the button is still
-            // under the finger when the click resolves — without it this
-            // took two taps. Blurring here, after it has resolved, gives
-            // the list the half of the screen the keyboard was holding:
-            // nothing here is typed, it is chosen. A "do" command focuses
-            // the box again on its way out, which is when a keyboard is
-            // wanted back.
-            if (next) boxRef.current?.blur();
+            if (desk || deskWaiting) { setDesk(false); setDeskWaiting(false); return; }
+            const box = boxRef.current;
+            // With the keyboard up, put it away first and let the effect
+            // above draw the list once everything has stopped moving. With
+            // it already down there is nothing to wait for.
+            if (document.activeElement === box) {
+              box?.blur();
+              setDeskWaiting(true);
+            } else {
+              deskShownAt.current = Date.now();
+              setDesk(true);
+            }
           }}
           title={t('ai.desk')} aria-label={t('ai.desk')}
           style={{ border: 0 }}
