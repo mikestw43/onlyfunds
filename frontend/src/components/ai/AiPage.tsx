@@ -1358,8 +1358,13 @@ export const AiSheet = () => {
         </div>
       )}
 
-      {/* Composer */}
-      <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end', minWidth: 0 }}>
+      {/* Composer. Two rows, done by wrapping rather than by moving
+          anything: the box is given the whole width and ordered first, so
+          the buttons wrap underneath it. On one row the box shared its
+          width with three buttons and had 198px of a 430px screen — 46%
+          — for the thing actually being written in. The buttons do not
+          need to be beside it, only reachable. */}
+      <div className="ai-composer">
         <button
           className={desk ? 'ai-plus ai-plus-on' : 'ai-plus'}
           // Same guard the send button has, and needed for the same
@@ -1397,7 +1402,25 @@ export const AiSheet = () => {
           />
           <IconPlus size={19} />
         </label>
-        <div style={{ position: 'relative', flex: 1, minWidth: 0, display: 'flex' }}>
+        {/* Out of the box and onto the button row. Inside it, it reserved
+            42px of the box's own width for itself on every line; out here
+            it costs nothing and the row had the space going spare.
+            Only where the browser can actually listen: a microphone that
+            does nothing is worse than none. */}
+        {mic.supported && (
+          <button
+            // One pointer event, not a touch and a click: handling both
+            // fired twice per tap — start then stop — and the button
+            // looked dead. This covers finger and mouse alike.
+            onPointerDown={e => { e.preventDefault(); if (mic.listening) mic.stop(); else mic.start(); }}
+            title={mic.listening ? t('ai.listening') : t('ai.speak')}
+            aria-label={t('ai.speak')}
+            className={mic.listening ? 'ai-mic ai-mic-row ai-mic-on' : 'ai-mic ai-mic-row'}
+          >
+            <IconMic size={17} />
+          </button>
+        )}
+        <div className="ai-box-wrap" style={{ position: 'relative', minWidth: 0, display: 'flex' }}>
           {/* A textarea, because a question can be three lines long and a
               single-line input just scrolls sideways under the thumb. It
               grows with the text to a point and then scrolls.
@@ -1416,7 +1439,7 @@ export const AiSheet = () => {
             // The mic pushes the box's text in from the right; the layer
             // has to be pushed the same, or every line wraps in a
             // different place from the one it is tracing.
-            style={{ paddingRight: mic.supported ? '42px' : '12px' }}
+            style={{ paddingRight: '12px' }}
           >
             {marked.map((m, i) => m.mark
               ? <mark key={i} className="ai-token">{m.text}</mark>
@@ -1471,25 +1494,10 @@ export const AiSheet = () => {
             className="ai-box"
             style={{
               border: `1px solid ${mic.listening ? 'var(--danger)' : 'var(--border2)'}`,
-              paddingRight: mic.supported ? '42px' : '12px',
+              paddingRight: '12px',
             }}
           />
 
-          {/* Only where the browser can actually listen. A microphone that
-              does nothing is worse than none. */}
-          {mic.supported && (
-            <button
-              // One pointer event, not a touch and a click: handling both
-              // fired twice per tap — start then stop — and the button
-              // looked dead. This covers finger and mouse alike.
-              onPointerDown={e => { e.preventDefault(); if (mic.listening) mic.stop(); else mic.start(); }}
-              title={mic.listening ? t('ai.listening') : t('ai.speak')}
-              aria-label={t('ai.speak')}
-              className={mic.listening ? 'ai-mic ai-mic-on' : 'ai-mic'}
-            >
-              <IconMic size={17} />
-            </button>
-          )}
         </div>
         {/* Round, with an arrow, the way every chat on a phone sends: the
             word SEND in a box took a third of the composer's width and
@@ -1691,6 +1699,21 @@ export const AiSheet = () => {
         @supports not (background: color-mix(in srgb, red 50%, transparent)) {
           .ai-token { background: rgba(96,165,250,.22); box-shadow: 0 0 0 2px rgba(96,165,250,.22); }
         }
+        .ai-composer {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+          align-items: center;
+          min-width: 0;
+        }
+        /* First, and the full width, so everything else wraps below it. */
+        .ai-box-wrap { order: 1; flex: 0 0 100%; }
+        .ai-composer > *:not(.ai-box-wrap) { order: 2; }
+        /* Send stays on the right of its own row. */
+        .ai-composer > .ai-send { margin-left: auto; }
+        /* In the row it is an ordinary button, not a thing pinned inside
+           the box. */
+        .ai-mic.ai-mic-row { position: static; }
         .ai-mic {
           /* Pinned to the bottom, not the middle: the box grows upward as
              the question gets longer and a centred button would drift. */
