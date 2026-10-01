@@ -13,46 +13,25 @@
  * phone. The page clears it when it comes to the front.
  */
 
-/* ── Where the count lives ───────────────────────────────────────────────
-   A plain variable would not do: the browser stops this worker whenever it
-   feels like it, and starts a fresh one for the next push. IndexedDB is the
-   only store a worker can reach that survives that. */
-const DB_NAME = 'onlyfunds-push';
-const STORE = 'state';
-const BADGE_KEY = 'badge';
-
-const openDb = () => new Promise((resolve, reject) => {
-  const req = indexedDB.open(DB_NAME, 1);
-  req.onupgradeneeded = () => req.result.createObjectStore(STORE);
-  req.onsuccess = () => resolve(req.result);
-  req.onerror = () => reject(req.error);
-});
-
-const readState = async (key) => {
-  const db = await openDb();
-  return new Promise((resolve, reject) => {
-    const req = db.transaction(STORE, 'readonly').objectStore(STORE).get(key);
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-};
-
-const writeState = async (key, value) => {
-  const db = await openDb();
-  return new Promise((resolve, reject) => {
-    const req = db.transaction(STORE, 'readwrite').objectStore(STORE).put(value, key);
-    req.onsuccess = () => resolve();
-    req.onerror = () => reject(req.error);
-  });
-};
-
 /* ── The badge ───────────────────────────────────────────────────────────
-   setAppBadge is the only way to put a number on the icon, and it is not
-   everywhere: iOS has it for a web app on the Home Screen from 16.4, and
-   desktop Chrome and Edge have it for an installed app. Chrome on Android
-   does not — there, Android puts its own dot on the icon because a
-   notification is unread, which is the same signal without the number. So
-   this is always attempted and never depended on. */
+   The count is simply how many of our notifications are still sitting in
+   the tray unread. Nothing is stored and nothing can drift: dismiss two
+   alerts by hand and the next push sets the badge to what is actually
+   left.
+
+   It used to be a counter in IndexedDB, incremented before the
+   notification was shown. That was wrong twice over. A database open that
+   is blocked never settles — not a rejection a catch can take, a promise
+   that never ends — and it sat in front of showNotification, so on a
+   platform where it stalled, the push produced no notification at all and
+   Safari revokes the subscription of a worker that does that. The counter
+   also had no way to learn that notifications had been swiped away.
+
+   setAppBadge is not everywhere: iOS has it for a web app on the Home
+   Screen from 16.4, desktop Chrome and Edge for an installed app. Chrome
+   on Android does not — there Android puts its own dot on the icon
+   because a notification is unread, the same signal without the number.
+   Always attempted, never depended on. */
 const applyBadge = async (count) => {
   try {
     if (count > 0 && self.navigator.setAppBadge) await self.navigator.setAppBadge(count);
@@ -62,16 +41,31 @@ const applyBadge = async (count) => {
   }
 };
 
-const bumpBadge = async () => {
-  const next = (Number(await readState(BADGE_KEY).catch(() => 0)) || 0) + 1;
-  await writeState(BADGE_KEY, next).catch(() => {});
-  await applyBadge(next);
-  return next;
+/** Set the icon to however many of our notifications are still unread. */
+const badgeFromTray = async () => {
+  try {
+    const open = await self.registration.getNotifications();
+    await applyBadge(open.length);
+  } catch (err) {
+    // Never allowed to matter: the notification itself is already shown.
+  }
 };
 
+/**
+ * The app was opened, so everything waiting has been seen.
+ *
+ * The tray is cleared along with the number, because the number is read
+ * back from the tray — leaving them would mean the next single alert
+ * arrived showing yesterday's total.
+ */
 const resetBadge = async () => {
-  await writeState(BADGE_KEY, 0).catch(() => {});
   await applyBadge(0);
+  try {
+    const open = await self.registration.getNotifications();
+    for (const n of open) n.close();
+  } catch (err) {
+    // Nothing to clean up, or not allowed to. Either is fine.
+  }
 };
 
 /* ── Lifecycle ───────────────────────────────────────────────────────────
@@ -98,7 +92,9 @@ self.addEventListener('push', (event) => {
   const body = data.body || 'New activity on your accounts.';
 
   event.waitUntil((async () => {
-    await bumpBadge().catch(() => {});
+    // Shown first, before anything that could stall or throw. A worker
+    // that accepts a push and shows nothing has its subscription revoked,
+    // and the badge is never worth risking that.
     await self.registration.showNotification(title, {
       body,
       icon: '/apple-touch-icon.png',
@@ -111,6 +107,7 @@ self.addEventListener('push', (event) => {
       data: { url: data.url || '/' },
       timestamp: Date.now(),
     });
+    await badgeFromTray();
   })());
 });
 

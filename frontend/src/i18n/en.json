@@ -420,6 +420,7 @@
   "settings.push_install": "Add OnlyFunds to your Home Screen first: tap Share, then \"Add to Home Screen\", and open it from there. Apple only allows notifications for a web app installed that way.",
   "settings.push_failed": "Could not turn on notifications.",
   "settings.push_devices": "Devices receiving alerts",
+  "settings.push_state": "THIS DEVICE",
   "settings.push_android_note": "Android shows a dot on the icon rather than a number — the number is in the notification tray.",
   "settings.notif_export": "↓ EXPORT",
   "settings.notif_empty": "No notifications sent yet.",

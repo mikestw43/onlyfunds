@@ -190,6 +190,33 @@ export interface TestResult {
   failures: { label: string; status: number | null; detail: string }[];
 }
 
+/**
+ * Everything about this device that decides whether a push can arrive, on
+ * one line.
+ *
+ * Three rounds of this were spent guessing at a phone nobody debugging it
+ * could see, with each of "never installed", "never subscribed" and
+ * "subscribed but refused" looking identical from the outside. This is
+ * meant to be photographed and read.
+ */
+export const diagnostics = async (): Promise<string> => {
+  const bits: string[] = [];
+  bits.push(isIOS() ? 'iOS' : /Android/.test(navigator.userAgent) ? 'Android' : 'desktop');
+  bits.push(`installed:${isInstalled() ? 'yes' : 'NO'}`);
+  bits.push(`push-api:${'PushManager' in window ? 'yes' : 'NO'}`);
+  bits.push(`permission:${'Notification' in window ? Notification.permission : 'n/a'}`);
+  try {
+    const reg = await navigator.serviceWorker?.getRegistration('/');
+    bits.push(`worker:${reg?.active ? 'active' : reg ? 'registered' : 'NONE'}`);
+    bits.push(`subscribed:${(await reg?.pushManager.getSubscription()) ? 'yes' : 'NO'}`);
+  } catch {
+    bits.push('worker:ERROR');
+  }
+  bits.push(`badge-api:${'setAppBadge' in navigator ? 'yes' : 'no'}`);
+  bits.push(`key-ready:${ready ? 'yes' : 'NO'}`);
+  return bits.join(' · ');
+};
+
 export const sendTestPush = async (): Promise<TestResult> => {
   const { data } = await api.post<TestResult>('/push/test', {});
   return data;

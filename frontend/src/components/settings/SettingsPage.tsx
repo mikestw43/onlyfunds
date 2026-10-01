@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useUIStore } from '../../stores/uiStore';
 import { useTranslation } from '../../i18n/useTranslation';
 import {
-  getState as getPushState, enablePush, disablePush, sendTestPush, listDevices, prepare,
+  getState as getPushState, enablePush, disablePush, sendTestPush, listDevices, prepare, diagnostics,
   type PushState, type PushDevice,
 } from '../../services/push';
 import { useAuthStore } from '../../stores/authStore';
@@ -252,6 +252,7 @@ const PushCard = () => {
   // only logged: the phone that fails is rarely the device with a console
   // attached, and "could not turn on notifications" tells nobody anything.
   const [enableError, setEnableError] = useState('');
+  const [diag, setDiag] = useState('');
 
   const refreshDevices = () => listDevices().then(setDevices).catch(() => setDevices([]));
   // prepare() is also called on page load, but it does nothing before
@@ -259,6 +260,13 @@ const PushCard = () => {
   // finish before anybody can tap: Safari will not subscribe once the tap
   // has waited on the network.
   useEffect(() => { prepare(); getPushState().then(setState); refreshDevices(); }, []);
+  // Re-read after anything that could change it, and once a second later
+  // than the first paint so the key fetch has landed.
+  useEffect(() => {
+    diagnostics().then(setDiag);
+    const t = setTimeout(() => diagnostics().then(setDiag), 1500);
+    return () => clearTimeout(t);
+  }, [state, enableError]);
 
   const toggle = async () => {
     setBusy(true);
@@ -316,6 +324,24 @@ const PushCard = () => {
       <p style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-body-sm)', color: 'var(--text-dim)', marginBottom: '12px', lineHeight: 1.6 }}>
         {blocked ? blockedText : t('settings.push_intro')}
       </p>
+
+      {/* Shown in every state, including the blocked ones: a device that
+          cannot turn this on is exactly the device whose situation needs
+          reporting, and this line is meant to be photographed. */}
+      {diag && (
+        <div style={{ marginBottom: '12px' }}>
+          <div style={{ fontFamily: 'var(--ff-label)', fontSize: 'var(--fs-label)', color: 'var(--text-dim)', letterSpacing: '.5px', marginBottom: '4px' }}>
+            {t('settings.push_state')}
+          </div>
+          <div style={{
+            fontFamily: 'var(--ff-micro, monospace)', fontSize: 'var(--fs-micro)', color: 'var(--text-dim)',
+            background: 'var(--bg-card2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
+            padding: '7px 9px', lineHeight: 1.7, wordBreak: 'break-word',
+          }}>
+            {diag}
+          </div>
+        </div>
+      )}
       {!blocked && (
         <>
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
