@@ -25,7 +25,7 @@ export interface AlertText {
   label: string;
   /** The reading. Null when the message has no number in it. */
   value: string | null;
-  /** The threshold and anything else, already joined. */
+  /** The supporting figures, already joined. */
   detail: string;
   /** Everything, tags removed — shown when the shape is not recognised. */
   plain: string;
@@ -72,13 +72,16 @@ export const readAlert = (raw: string): AlertText => {
 
   const label = m[1].trim().toLowerCase();
   const value = m[2].trim();
-  const limit = m[3]?.trim();
 
-  const detail = [
-    limit ? `Limit ${limit}` : null,
+  // The threshold is deliberately left out. It is the number as it stood
+  // when the alert fired, so an older alert shows an older limit, and
+  // reading "you set this at 50%" under a setting that now says 80% is
+  // more confusing than the line was worth. The current limit is in the
+  // account's own dialog, where it is the truth rather than a record.
+  const detail = rest.slice(1)
     // "Equity: $1,071,839.17" → "equity $1,071,839.17"
-    ...rest.slice(1).map(l => l.replace(/^([^:]+):\s*/, (_x, k: string) => `${k.toLowerCase()} `)),
-  ].filter(Boolean).join(' · ');
+    .map(l => l.replace(/^([^:]+):\s*/, (_x, k: string) => `${k.toLowerCase()} `))
+    .join(' · ');
 
   return { account, label, value, detail, plain };
 };
