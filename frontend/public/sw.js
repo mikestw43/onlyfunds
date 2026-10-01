@@ -14,24 +14,11 @@
  */
 
 /* ── The badge ───────────────────────────────────────────────────────────
-   The count is simply how many of our notifications are still sitting in
-   the tray unread. Nothing is stored and nothing can drift: dismiss two
-   alerts by hand and the next push sets the badge to what is actually
-   left.
-
-   It used to be a counter in IndexedDB, incremented before the
-   notification was shown. That was wrong twice over. A database open that
-   is blocked never settles — not a rejection a catch can take, a promise
-   that never ends — and it sat in front of showNotification, so on a
-   platform where it stalled, the push produced no notification at all and
-   Safari revokes the subscription of a worker that does that. The counter
-   also had no way to learn that notifications had been swiped away.
-
    setAppBadge is not everywhere: iOS has it for a web app on the Home
    Screen from 16.4, desktop Chrome and Edge for an installed app. Chrome
-   on Android does not — there Android puts its own dot on the icon
-   because a notification is unread, the same signal without the number.
-   Always attempted, never depended on. */
+   on Android does not — there Android puts its own dot on the icon because
+   a notification is unread, the same signal without the number. Always
+   attempted, never depended on. */
 const applyBadge = async (count) => {
   try {
     if (count > 0 && self.navigator.setAppBadge) await self.navigator.setAppBadge(count);
@@ -41,31 +28,68 @@ const applyBadge = async (count) => {
   }
 };
 
-/** Set the icon to however many of our notifications are still unread. */
-const badgeFromTray = async () => {
-  try {
-    const open = await self.registration.getNotifications();
-    await applyBadge(open.length);
-  } catch (err) {
-    // Never allowed to matter: the notification itself is already shown.
-  }
+/* Where the count is kept between pushes.
+
+   The browser stops this worker whenever it likes and starts a fresh one
+   for the next push, so a plain variable would not survive. The Cache API
+   is the simplest store a worker can reach that does — one get, one put,
+   no transactions and nothing that can be blocked by another tab, which
+   is what made the first attempt at this (IndexedDB) able to hang. */
+const STORE = 'onlyfunds-badge';
+const COUNT_URL = '/__badge-count';
+
+/* Nothing here may hang the push handler. Everything that touches storage
+   or the notification list goes through this, so the worst case is a wrong
+   number rather than a push that never finishes. */
+const guard = (promise, fallback) => Promise.race([
+  promise.catch(() => fallback),
+  new Promise(resolve => setTimeout(() => resolve(fallback), 2000)),
+]);
+
+const readCount = () => guard((async () => {
+  const cache = await caches.open(STORE);
+  const hit = await cache.match(COUNT_URL);
+  return hit ? Number(await hit.text()) || 0 : 0;
+})(), 0);
+
+const writeCount = (n) => guard((async () => {
+  const cache = await caches.open(STORE);
+  await cache.put(COUNT_URL, new Response(String(n)));
+})(), undefined);
+
+/**
+ * Advance the badge after a notification has been shown.
+ *
+ * Two sources, because neither can be trusted alone. The tray is the
+ * better answer when it gives one — it drops on its own when alerts are
+ * swiped away, and alerts sharing a tag replace rather than stack. But
+ * getNotifications() is not guaranteed to have caught up with the
+ * notification just shown, and a worker that believed an empty list would
+ * clear the badge in the same breath as setting it, which looks exactly
+ * like a badge that never worked.
+ *
+ * So the stored counter always advances, and the tray overrides it only
+ * when it actually reports something.
+ */
+const bumpBadge = async () => {
+  const next = (await readCount()) + 1;
+  await writeCount(next);
+  const tray = await guard(self.registration.getNotifications(), []);
+  await applyBadge(tray.length > 0 ? tray.length : next);
 };
 
 /**
  * The app was opened, so everything waiting has been seen.
  *
- * The tray is cleared along with the number, because the number is read
- * back from the tray — leaving them would mean the next single alert
- * arrived showing yesterday's total.
+ * The tray is emptied along with the number: the count prefers the tray,
+ * and leaving yesterday's notifications in it would make the next single
+ * alert arrive showing the old total.
  */
 const resetBadge = async () => {
+  await writeCount(0);
   await applyBadge(0);
-  try {
-    const open = await self.registration.getNotifications();
-    for (const n of open) n.close();
-  } catch (err) {
-    // Nothing to clean up, or not allowed to. Either is fine.
-  }
+  const tray = await guard(self.registration.getNotifications(), []);
+  for (const n of tray) { try { n.close(); } catch (err) { /* already gone */ } }
 };
 
 /* ── Lifecycle ───────────────────────────────────────────────────────────
@@ -107,7 +131,7 @@ self.addEventListener('push', (event) => {
       data: { url: data.url || '/' },
       timestamp: Date.now(),
     });
-    await badgeFromTray();
+    await bumpBadge();
   })());
 });
 
