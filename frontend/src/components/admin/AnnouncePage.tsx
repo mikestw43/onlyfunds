@@ -43,6 +43,18 @@ export const AnnouncePage = () => {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  /**
+   * The notice this draft came from, when the form was opened by "post
+   * again" rather than by "+ POST".
+   *
+   * A repost has to be a new notice rather than an edit of the old one:
+   * unread is tracked per id, so changing a notice in place reaches
+   * nobody who had already seen it, which is the whole point of posting it
+   * again. The original is removed once the new one is up, so the list
+   * does not fill with near-duplicates.
+   */
+  const [repostOf, setRepostOf] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState(false);
 
   const refresh = () => qc.invalidateQueries({ queryKey: ['announcements'] });
   const failed = (err: unknown) => addToast({
@@ -51,9 +63,17 @@ export const AnnouncePage = () => {
   });
 
   const post = useMutation({
-    mutationFn: postAnnouncement,
-    onSuccess: () => { setForm(emptyForm); setShowForm(false); refresh(); },
-    onError: failed,
+    mutationFn: async (input: { title: string; body: string; type: Announcement['type']; pinned: boolean }) => {
+      const created = await postAnnouncement(input);
+      // Only once the new one is safely up. A failed post must not take
+      // the original with it.
+      if (repostOf) await deleteAnnouncement(repostOf).catch(() => {});
+      return created;
+    },
+    onSuccess: () => {
+      setForm(emptyForm); setShowForm(false); setRepostOf(null); setConfirming(false); refresh();
+    },
+    onError: (err) => { setConfirming(false); failed(err); },
   });
 
   const remove = useMutation({
@@ -68,9 +88,21 @@ export const AnnouncePage = () => {
     onError: failed,
   });
 
+  /** The button asks; the dialog sends. */
   const handlePost = () => {
     if (!form.title.trim() || !form.body.trim()) return;
+    setConfirming(true);
+  };
+
+  const confirmPost = () =>
     post.mutate({ title: form.title, body: form.body, type: form.type, pinned: form.pinned });
+
+  /** Open the form on a copy of an existing notice, ready to be edited. */
+  const handleRepost = (a: Announcement) => {
+    setForm({ title: a.title, body: a.body, type: a.type, pinned: a.pinned });
+    setRepostOf(a.id);
+    setShowForm(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleDelete = (id: string) => remove.mutate(id);
@@ -95,7 +127,7 @@ export const AnnouncePage = () => {
         </div>
         {isAdmin && (
           <button
-            onClick={() => setShowForm(p => !p)}
+            onClick={() => { setShowForm(p => !p); setRepostOf(null); setForm(emptyForm); }}
             style={{
               padding: '8px 16px',
               background: showForm ? 'rgba(248,113,113,.1)' : 'rgba(96,165,250,.1)',
@@ -117,7 +149,7 @@ export const AnnouncePage = () => {
           padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '12px',
         }}>
           <div style={{ fontFamily: 'var(--ff-section)', fontSize: 'var(--fs-section)', color: 'var(--text-primary)', fontWeight: 600, letterSpacing: '1px' }}>
-            {t('announce.new')}
+            {repostOf ? t('announce.reposting') : t('announce.new')}
           </div>
 
           {/* Type selector */}
@@ -197,7 +229,7 @@ export const AnnouncePage = () => {
           <div style={{ fontFamily: 'var(--ff-section)', fontSize: 'var(--fs-section)', color: 'var(--text-muted)', letterSpacing: '1px', padding: '0 4px' }}>
             {t('announce.pinned')}
           </div>
-          {pinned.map(a => <AnnCard key={a.id} ann={a} isAdmin={isAdmin} onDelete={setDeleteId} onPin={(id, p) => pin.mutate({ id, pinned: p })} />)}
+          {pinned.map(a => <AnnCard key={a.id} ann={a} isAdmin={isAdmin} onDelete={setDeleteId} onPin={(id, p) => pin.mutate({ id, pinned: p })} onRepost={handleRepost} />)}
         </div>
       )}
 
@@ -209,7 +241,7 @@ export const AnnouncePage = () => {
               {t('announce.recent')}
             </div>
           )}
-          {regular.map(a => <AnnCard key={a.id} ann={a} isAdmin={isAdmin} onDelete={setDeleteId} onPin={(id, p) => pin.mutate({ id, pinned: p })} />)}
+          {regular.map(a => <AnnCard key={a.id} ann={a} isAdmin={isAdmin} onDelete={setDeleteId} onPin={(id, p) => pin.mutate({ id, pinned: p })} onRepost={handleRepost} />)}
         </div>
       )}
 
@@ -219,6 +251,41 @@ export const AnnouncePage = () => {
           fontFamily: 'var(--ff-input)', fontSize: 'var(--fs-input)', color: 'var(--text-muted)',
         }}>
           {t('announce.empty')}
+        </div>
+      )}
+
+      {/* Post confirm — asked for both a new notice and a repost, because
+          either one reaches everybody the moment it goes out. */}
+      {confirming && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,.7)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 800, padding: '16px',
+        }}>
+          <div style={{
+            background: 'var(--bg-card)', border: '1px solid var(--cyan)',
+            padding: '24px 28px', maxWidth: '400px',
+          }}>
+            <div style={{ fontFamily: 'var(--ff-section)', fontSize: 'var(--fs-section)', color: 'var(--cyan)', marginBottom: '12px', letterSpacing: '.5px' }}>
+              {t('announce.confirm_title')}
+            </div>
+            <div style={{ fontFamily: 'var(--ff-input)', fontSize: 'var(--fs-input)', color: 'var(--text)', marginBottom: '8px' }}>
+              {form.title}
+            </div>
+            <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-body)', color: 'var(--text-muted)', marginBottom: '20px', lineHeight: 1.6 }}>
+              {repostOf ? t('announce.confirm_repost') : t('announce.confirm_new')}
+            </div>
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              <button onClick={() => setConfirming(false)} disabled={post.isPending} style={{
+                padding: '8px 16px', background: 'none', border: '1px solid var(--border2)', borderRadius: 'var(--radius-sm)',
+                color: 'var(--text-muted)', fontFamily: 'var(--ff-section)', fontSize: 'var(--fs-section)', cursor: 'pointer',
+              }}>{t('announce.cancel')}</button>
+              <button onClick={confirmPost} disabled={post.isPending} style={{
+                padding: '8px 16px', background: 'rgba(52,211,153,.1)', border: '1px solid var(--green)',
+                color: 'var(--green)', fontFamily: 'var(--ff-section)', fontSize: 'var(--fs-section)',
+                cursor: post.isPending ? 'wait' : 'pointer', opacity: post.isPending ? .5 : 1,
+              }}>{post.isPending ? t('announce.posting') : t('announce.confirm_yes')}</button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -255,12 +322,14 @@ export const AnnouncePage = () => {
   );
 };
 
-const AnnCard = ({ ann, isAdmin, onDelete, onPin }: {
+const AnnCard = ({ ann, isAdmin, onDelete, onPin, onRepost }: {
   ann: Announcement;
   isAdmin: boolean;
   onDelete: (id: string) => void;
   onPin: (id: string, pinned: boolean) => void;
+  onRepost: (ann: Announcement) => void;
 }) => {
+  const t = useTranslation();
   const cfg = TYPE_CFG[ann.type];
   return (
     <div style={{
@@ -293,6 +362,26 @@ const AnnCard = ({ ann, isAdmin, onDelete, onPin }: {
             {ann.body}
           </div>
         </div>
+        {isAdmin && (
+          <button
+            onClick={() => onRepost(ann)}
+            title={t('announce.repost')}
+            style={{
+              padding: '4px 8px', background: 'none', border: '1px solid transparent',
+              color: 'var(--text-muted)', fontSize: '12px', cursor: 'pointer', flexShrink: 0,
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.color = 'var(--accent-blue)';
+              e.currentTarget.style.borderColor = 'rgba(96,165,250,.3)';
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.color = 'var(--text-muted)';
+              e.currentTarget.style.borderColor = 'transparent';
+            }}
+          >
+            ↻
+          </button>
+        )}
         {isAdmin && (
           <button
             onClick={() => onPin(ann.id, !ann.pinned)}
