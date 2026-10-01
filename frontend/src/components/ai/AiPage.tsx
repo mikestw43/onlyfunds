@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode, type PointerEvent as ReactPointerEvent } from 'react';
 import { askAi, fetchAiContext, fetchAiStatus, type AiContext, type AiStatus, fetchAiChats, fetchAiChat, deleteAiChat, truncateAiChat,
   type AiChatSummary, fetchAccounts } from '../../services/api';
 import type { Account, Order } from '../../types';
@@ -2102,14 +2102,143 @@ export const AiSheet = () => {
  * places in the app, and this is an action that can be taken from any of
  * them. It hides itself on the AI page — a button that goes where you
  * already are is just something covering the text.
+ *
+ * It can be dragged anywhere, and on letting go it runs back to whichever
+ * side edge is nearer, at the height it was dropped. A button nailed to one
+ * corner sooner or later covers the one figure you are trying to read — the
+ * DD% column sits right under it — and moving it should not mean a setting.
+ * It never rests in the middle of the screen: against an edge a thumb can
+ * always find it, and the least of the table is hidden behind it. Where it
+ * came to rest is remembered for next time.
  */
+
+const FAB_SIZE = 52;
+const FAB_EDGE = 16;   // the gap it keeps from the side it rests against
+const FAB_TOP = 64;    // not up under the header
+const FAB_BOTTOM = 76; // not down behind the bottom bar
+
+type FabSpot = { x: number; y: number };
+
+const FAB_SPOT_KEY = 'onlyfunds_ai_fab_spot';
+
+/** Keeps it on screen — the window changes size when the phone turns. */
+const clampSpot = (s: FabSpot): FabSpot => {
+  const maxX = Math.max(FAB_EDGE, window.innerWidth - FAB_SIZE - FAB_EDGE);
+  const maxY = Math.max(FAB_TOP, window.innerHeight - FAB_SIZE - FAB_BOTTOM);
+  return {
+    x: Math.min(Math.max(s.x, FAB_EDGE), maxX),
+    y: Math.min(Math.max(s.y, FAB_TOP), maxY),
+  };
+};
+
+/** Sends it to the nearer side edge, at the height it was let go. */
+const snapSpot = (s: FabSpot): FabSpot => {
+  const held = clampSpot(s);
+  const toLeft = held.x + FAB_SIZE / 2 < window.innerWidth / 2;
+  return { x: toLeft ? FAB_EDGE : window.innerWidth - FAB_SIZE - FAB_EDGE, y: held.y };
+};
+
+const readSpot = (): FabSpot | null => {
+  try {
+    const raw = localStorage.getItem(FAB_SPOT_KEY);
+    if (!raw) return null;
+    const saved = JSON.parse(raw);
+    if (typeof saved?.x !== 'number' || typeof saved?.y !== 'number') return null;
+    return { x: saved.x, y: saved.y };
+  } catch {
+    return null;
+  }
+};
+
 export const AiFab = ({ onClick, hidden }: { onClick: () => void; hidden?: boolean }) => {
+  // null means it has never been moved, and the corner set in the CSS stands.
+  const [spot, setSpot] = useState<FabSpot | null>(null);
+  const [held, setHeld] = useState(false);
+  const btn = useRef<HTMLButtonElement>(null);
+  const grab = useRef<{ id: number; dx: number; dy: number; sx: number; sy: number; moved: boolean } | null>(null);
+
+  useEffect(() => {
+    const saved = readSpot();
+    if (saved) setSpot(snapSpot(saved));
+  }, []);
+
+  useEffect(() => {
+    const settle = () => setSpot(s => (s ? snapSpot(s) : s));
+    window.addEventListener('resize', settle);
+    window.addEventListener('orientationchange', settle);
+    return () => {
+      window.removeEventListener('resize', settle);
+      window.removeEventListener('orientationchange', settle);
+    };
+  }, []);
+
+  const rest = () => {
+    setHeld(false);
+    setSpot(s => {
+      if (!s) return s;
+      const resting = snapSpot(s);
+      try { localStorage.setItem(FAB_SPOT_KEY, JSON.stringify(resting)); } catch { /* private browsing */ }
+      return resting;
+    });
+  };
+
+  const down = (e: ReactPointerEvent<HTMLButtonElement>) => {
+    const el = btn.current;
+    if (!el) return;
+    const box = el.getBoundingClientRect();
+    grab.current = {
+      id: e.pointerId,
+      dx: e.clientX - box.left, dy: e.clientY - box.top,
+      sx: e.clientX, sy: e.clientY,
+      moved: false,
+    };
+    // Follows the finger even once it has left the button.
+    el.setPointerCapture(e.pointerId);
+    // From here it is placed by coordinates rather than by the corner.
+    setSpot({ x: box.left, y: box.top });
+    setHeld(true);
+  };
+
+  const move = (e: ReactPointerEvent<HTMLButtonElement>) => {
+    const g = grab.current;
+    if (!g || g.id !== e.pointerId) return;
+    // A thumb never holds perfectly still; under this much it was a tap.
+    if (!g.moved && Math.hypot(e.clientX - g.sx, e.clientY - g.sy) < 6) return;
+    g.moved = true;
+    setSpot(clampSpot({ x: e.clientX - g.dx, y: e.clientY - g.dy }));
+  };
+
+  const up = (e: ReactPointerEvent<HTMLButtonElement>) => {
+    const g = grab.current;
+    if (!g || g.id !== e.pointerId) return;
+    grab.current = null;
+    if (!g.moved) { setHeld(false); onClick(); return; }
+    rest();
+  };
+
+  const cancel = (e: ReactPointerEvent<HTMLButtonElement>) => {
+    const g = grab.current;
+    if (!g || g.id !== e.pointerId) return;
+    grab.current = null;
+    rest();
+  };
+
   if (hidden) return null;
+
   return (
     <button
-      onClick={onClick}
+      ref={btn}
+      type="button"
+      onPointerDown={down}
+      onPointerMove={move}
+      onPointerUp={up}
+      onPointerCancel={cancel}
+      // The pointer handlers open it; this is only for the keyboard, which
+      // reports a click with no detail behind it.
+      onClick={(e) => { if (e.detail === 0) onClick(); }}
       aria-label="AI"
-      className="ai-fab"
+      className={`ai-fab${held ? ' ai-fab-held' : ''}`}
+      style={spot ? { left: spot.x, top: spot.y, right: 'auto', bottom: 'auto' } : undefined}
     >
       <IconSpark size={22} />
       <style>{`
@@ -2126,8 +2255,18 @@ export const AiFab = ({ onClick, hidden }: { onClick: () => void; hidden?: boole
           box-shadow: 0 6px 18px rgba(0,0,0,.45);
           cursor: pointer; z-index: 60;
           -webkit-tap-highlight-color: transparent;
+          /* The page must not scroll under a finger that is dragging this. */
+          touch-action: none;
+          /* Only the run back to the edge is animated; while a finger is on
+             it the button has to keep up with the finger exactly. */
+          transition: left .22s cubic-bezier(.22,1,.36,1), top .22s cubic-bezier(.22,1,.36,1);
         }
         .ai-fab:active { transform: scale(.94); }
+        .ai-fab-held, .ai-fab-held:active {
+          transition: none;
+          transform: scale(1.08);
+          box-shadow: 0 10px 26px rgba(0,0,0,.55);
+        }
         /* Wherever the sidebar is not — the sidebar is the only other way
            in. At 767px this left a gap from 768 to 900 with neither: an
            unfolded Pixel Fold lands at about 840 and had no way to open the
