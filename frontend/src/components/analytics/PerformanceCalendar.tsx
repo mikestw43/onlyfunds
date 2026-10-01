@@ -60,29 +60,23 @@ const fmtFull = (n: number): string => {
   return `${sign}$${abs.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 };
 
-const heatClass = (pnl: number): string => {
-  const abs = Math.abs(pnl);
-  if (pnl > 0)  return abs > 1200 ? 'pcal-p3' : abs > 500 ? 'pcal-p2' : 'pcal-p1';
-  if (pnl < 0) return abs > 1200 ? 'pcal-l3' : abs > 500 ? 'pcal-l2' : 'pcal-l1';
-  return '';
-};
-
-const heatBg = (cls: string): string => {
-  switch (cls) {
-    case 'pcal-p1': return 'rgba(52,211,153,.05)';
-    case 'pcal-p2': return 'rgba(52,211,153,.12)';
-    case 'pcal-p3': return 'rgba(52,211,153,.22)';
-    case 'pcal-l1': return 'rgba(248,113,113,.05)';
-    case 'pcal-l2': return 'rgba(248,113,113,.12)';
-    case 'pcal-l3': return 'rgba(248,113,113,.22)';
-    default: return 'transparent';
-  }
-};
-
-const heatBorder = (cls: string): string => {
-  if (cls === 'pcal-p3') return 'rgba(52,211,153,.18)';
-  if (cls === 'pcal-l3') return 'rgba(248,113,113,.18)';
-  return 'var(--border)';
+/**
+ * Green for a day up, red for a day down, one depth each.
+ *
+ * It used to be three depths a side, by size of the day — which asked the
+ * eye to rank nine shades, and the number is already printed in the cell
+ * and ranked properly in BEST DAY and WORST DAY above the grid. The depth
+ * added nothing the figures did not say better.
+ *
+ * The top band also carried a tinted border, which is what made the three
+ * biggest days of the month look boxed in while the rest looked open: it
+ * was the only border visible, and a cell's border cannot be rounded in a
+ * collapsed table, so it drew a hard rectangle. One rule for every day,
+ * and nothing stands out as a box.
+ */
+const heatBg = (pnl: number | undefined): string => {
+  if (pnl === undefined || pnl === 0) return 'transparent';
+  return pnl > 0 ? 'rgba(52,211,153,.14)' : 'rgba(248,113,113,.14)';
 };
 
 export const PerformanceCalendar = ({ accountId }: Props) => {
@@ -208,7 +202,9 @@ export const PerformanceCalendar = ({ accountId }: Props) => {
 
   const tdBase: React.CSSProperties = {
     padding: '5px 7px', textAlign: 'left',
-    border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
+    // No borderRadius here: a collapsed table drops it. The rounding lives
+    // on .pcal-fill, which is a block and can keep it.
+    border: '1px solid var(--border)',
     verticalAlign: 'top', height: '70px', position: 'relative',
   };
 
@@ -309,13 +305,11 @@ export const PerformanceCalendar = ({ accountId }: Props) => {
                 if (pnl !== undefined) { weekSum += pnl; hasDay = true; }
                 const estimated = cell !== undefined && !cell.verified;
                 if (estimated) weekVerified = false;
-                const heat = pnl !== undefined ? heatClass(pnl) : '';
                 const isToday = day === todayKey;
                 // "Today" is now signalled by a cyan circle around the date
                 // number itself — heat colouring on the cell stays so the
                 // P/L glance still works even on the current day.
-                const bg = heatBg(heat);
-                const border = `1px solid ${heatBorder(heat)}`;
+                const bg = heatBg(pnl);
                 const pnlColor = pnl !== undefined
                   ? (pnl > 0 ? 'var(--success)' : pnl < 0 ? 'var(--danger)' : 'var(--text-dim)')
                   : 'var(--text-dim)';
@@ -324,12 +318,14 @@ export const PerformanceCalendar = ({ accountId }: Props) => {
                     key={ci}
                     className="pcal-td"
                     title={cell === undefined ? undefined : estimated ? t('calendar.estimated_cell') : t('calendar.verified_cell')}
-                    style={{
-                      ...tdBase,
-                      background: bg,
-                      border,
-                    }}
+                    style={tdBase}
                   >
+                    {/* The colour sits on this, not on the cell. A table cell
+                        in a collapsed table cannot have rounded corners —
+                        browsers drop the radius — so a tinted cell was always
+                        going to be a hard rectangle. A block inside it rounds
+                        like anything else. */}
+                    <div className="pcal-fill" style={{ background: bg }} />
                     <span className={`pcal-dn${isToday ? ' pcal-dn-today' : ''}`} style={{
                       display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                       fontFamily: 'var(--ff-body)',
@@ -411,6 +407,18 @@ export const PerformanceCalendar = ({ accountId }: Props) => {
            number itself, and a leading character pushed the last digit out of
            view — a marker that hides the value it qualifies is worse than no
            marker. */
+        /* The day's colour. Inset by a pixel so the grid line still reads as
+           the grid line, rounded because it can be, and behind the figures
+           rather than over them. */
+        .pcal-fill {
+          position: absolute;
+          inset: 1px;
+          border-radius: var(--radius-sm);
+          pointer-events: none;
+          z-index: 0;
+        }
+        /* Everything else in the cell sits above the fill. */
+        .pcal-td > *:not(.pcal-fill) { position: relative; z-index: 1; }
         .pcal-approx {
           position: absolute;
           top: 3px; right: 5px;
