@@ -6,21 +6,111 @@ import { checkDrawdownProtection } from './drawdownProtection';
 import { decrypt } from '../lib/encryption';
 import type { Account } from '../mock/data';
 
-// Cooldown: Map key = `${accountId}:${alertType}`, value = timestamp of last fire
-const cooldowns = new Map<string, number>();
-const COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
-
 type AlertType = 'drawdown' | 'equity' | 'margin' | 'offline';
 
-const isOnCooldown = (accountId: string, type: AlertType): boolean => {
-  const key = `${accountId}:${type}`;
-  const last = cooldowns.get(key);
-  if (!last) return false;
-  return Date.now() - last < COOLDOWN_MS;
+/**
+ * Deciding whether an alert should actually be sent.
+ *
+ * The old rule was a five minute cooldown and nothing else, which gets
+ * both halves wrong. An account parked over its threshold alerted every
+ * five minutes for as long as it stayed there — two hundred and eighty
+ * times a day saying the same thing — and a figure wobbling across the
+ * line alerted on every crossing. The cooldown also lived in memory, and
+ * this redeploys itself every five minutes, so each deploy wiped it.
+ *
+ * Three rules now, in order:
+ *
+ *   1. Alert when it crosses the line, not while it sits past it.
+ *   2. It is only "recovered", and so able to alert again, once it comes
+ *      back a clear margin the right side of the threshold. A drawdown
+ *      limit of 80% re-arms below 75%, so 79.8 → 80.2 → 79.9 → 80.1 is
+ *      one alert, not four.
+ *   3. If it gets markedly worse while already alerting, that is news
+ *      rather than a repeat, so it speaks up again — 80% becoming 95% is
+ *      not something to stay quiet about.
+ *
+ * Over all of it sits the account's own floor: however many of the above
+ * are satisfied, nothing is sent within alertRepeatMins of the last one.
+ */
+
+/** How far back past the threshold counts as recovered, per kind. */
+const recovered = (type: AlertType, value: number, threshold: number): boolean => {
+  switch (type) {
+    // Drawdown and margin level are percentages, so a flat margin reads
+    // the same at every size.
+    case 'drawdown': return value < threshold - 5;
+    case 'margin':   return value > threshold * 1.1;
+    // Money, where a flat figure would mean nothing across accounts.
+    case 'equity':   return value > threshold * 1.02;
+    default:         return true;
+  }
 };
 
-const markFired = (accountId: string, type: AlertType): void => {
-  cooldowns.set(`${accountId}:${type}`, Date.now());
+/** Enough of a change to be worth saying again while already alerting. */
+const materiallyWorse = (type: AlertType, value: number, since: number): boolean => {
+  switch (type) {
+    case 'drawdown': return value >= since + 10;
+    case 'margin':   return value <= since * 0.8;
+    case 'equity':   return value <= since * 0.9;
+    default:         return false;
+  }
+};
+
+interface Decision { send: boolean; }
+
+/**
+ * Read this alert's state, decide, and write back what happened.
+ *
+ * Returns whether to send. Never throws: a database hiccup must not stop
+ * an alert going out, so it falls back to sending — the noisy direction
+ * is the safe one when the thing being reported is somebody's money.
+ */
+const shouldSend = async (
+  accountId: string,
+  type: AlertType,
+  breached: boolean,
+  value: number,
+  threshold: number,
+  repeatMins: number,
+): Promise<Decision> => {
+  let state;
+  try {
+    state = await prisma.alertState.findUnique({
+      where: { accountId_type: { accountId, type } },
+    });
+  } catch (err) {
+    console.error('[Alert] could not read alert state:', (err as Error)?.message);
+    return { send: breached };
+  }
+
+  if (!breached) {
+    // Only stand down once it is properly clear, not the moment it dips
+    // back under the line.
+    if (state?.firing && recovered(type, value, threshold)) {
+      await prisma.alertState.update({
+        where: { accountId_type: { accountId, type } },
+        data: { firing: false },
+      }).catch(() => {});
+    }
+    return { send: false };
+  }
+
+  const floorMs = Math.max(0, repeatMins) * 60 * 1000;
+  const tooSoon = state?.lastFiredAt != null && Date.now() - state.lastFiredAt.getTime() < floorMs;
+
+  // Already announced, and no worse than when it was: nothing to say.
+  const worse = state?.firing && state.lastValue != null
+    && materiallyWorse(type, value, state.lastValue);
+  if (state?.firing && !worse) return { send: false };
+  if (tooSoon) return { send: false };
+
+  await prisma.alertState.upsert({
+    where: { accountId_type: { accountId, type } },
+    update: { firing: true, lastValue: value, lastFiredAt: new Date() },
+    create: { accountId, type, firing: true, lastValue: value, lastFiredAt: new Date() },
+  }).catch(err => console.error('[Alert] could not record alert state:', err?.message));
+
+  return { send: true };
 };
 
 /**
@@ -135,6 +225,7 @@ export const checkAlerts = async (
           alertEquityBelow: true,
           alertMarginLevel: true,
           alertOffline: true,
+          alertRepeatMins: true,
         },
       },
     },
@@ -152,13 +243,23 @@ export const checkAlerts = async (
   const thresholds = new Map(user.accounts.map(a => [a.id, a]));
 
   for (const account of accounts) {
-    // Skip offline accounts for drawdown/equity/margin checks
-    if (account.status !== 'online') continue;
-
     const t = thresholds.get(account.id);
     if (!t) continue;
 
-    const fires: Array<{ type: AlertType; message: string }> = [];
+    // An account reporting again is what clears the offline alert. Done
+    // before the skip below, because checkOfflineAlert only ever runs on
+    // the way out — nothing else would ever stand this one down, and it
+    // would stay "already announced" for good.
+    if (account.status === 'online' && t.alertOffline) {
+      await shouldSend(account.id, 'offline', false, 0, 0, t.alertRepeatMins);
+    }
+
+    // Drawdown, equity and margin need a live reading to mean anything.
+    if (account.status !== 'online') continue;
+
+    // Each candidate carries the reading and the line it is measured
+    // against, because deciding whether to send needs both.
+    const fires: Array<{ type: AlertType; message: string; value: number; threshold: number }> = [];
 
     const safeName = escapeHtml(account.name);
 
@@ -167,6 +268,8 @@ export const checkAlerts = async (
       fires.push({
         type: 'drawdown',
         message: `⚠️ <b>DRAWDOWN ALERT</b>\n\nAccount: <b>${safeName}</b>\nDrawdown: <b>${account.drawdown.toFixed(2)}%</b> (threshold: ${t.alertDrawdown}%)\nEquity: $${account.equity.toFixed(2)}`,
+        value: account.drawdown,
+        threshold: t.alertDrawdown,
       });
     }
 
@@ -175,6 +278,8 @@ export const checkAlerts = async (
       fires.push({
         type: 'equity',
         message: `💰 <b>EQUITY ALERT</b>\n\nAccount: <b>${safeName}</b>\nEquity: <b>$${account.equity.toFixed(2)}</b> (threshold: $${t.alertEquityBelow})\nBalance: $${account.balance.toFixed(2)}`,
+        value: account.equity,
+        threshold: t.alertEquityBelow,
       });
     }
 
@@ -183,15 +288,31 @@ export const checkAlerts = async (
       fires.push({
         type: 'margin',
         message: `🔴 <b>MARGIN LEVEL ALERT</b>\n\nAccount: <b>${safeName}</b>\nMargin Level: <b>${account.marginLevel.toFixed(1)}%</b> (threshold: ${t.alertMarginLevel}%)\nFree Margin: $${account.freeMargin.toFixed(2)}`,
+        value: account.marginLevel,
+        threshold: t.alertMarginLevel,
       });
     }
 
     for (const fire of fires) {
-      if (isOnCooldown(account.id, fire.type)) continue;
-      markFired(account.id, fire.type);
+      const { send } = await shouldSend(
+        account.id, fire.type, true, fire.value, fire.threshold, t.alertRepeatMins,
+      );
+      if (!send) continue;
       const fullMsg = `[OnlyFunds]\n${fire.message}`;
       deliver(userId, account.id, fire.type, fullMsg, telegram)
         .catch(err => console.error('[Alert] deliver failed:', err?.message));
+    }
+
+    // A threshold that is set but not breached has to be told so, or it
+    // would never stand down and the next real crossing would be silent.
+    for (const [type, value, threshold] of [
+      ['drawdown', account.drawdown, t.alertDrawdown],
+      ['equity', account.equity, t.alertEquityBelow],
+      ['margin', account.marginLevel, t.alertMarginLevel],
+    ] as [AlertType, number, number | null][]) {
+      if (threshold === null) continue;
+      if (fires.some(f => f.type === type)) continue;
+      await shouldSend(account.id, type, false, value, threshold, t.alertRepeatMins);
     }
   }
 
@@ -208,8 +329,6 @@ export const checkOfflineAlert = async (
   userId: string,
   account: Account,
 ): Promise<void> => {
-  if (isOnCooldown(account.id, 'offline')) return;
-
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: {
@@ -217,15 +336,21 @@ export const checkOfflineAlert = async (
       telegramChatId: true,
       accounts: {
         where: { id: account.id },
-        select: { alertOffline: true },
+        select: { alertOffline: true, alertRepeatMins: true },
       },
     },
   });
 
   if (!user) return;
-  if (!user.accounts[0]?.alertOffline) return;
+  const settings = user.accounts[0];
+  if (!settings?.alertOffline) return;
 
-  markFired(account.id, 'offline');
+  // Offline has no reading to compare, so it is on or it is not: the
+  // values below are placeholders. It stands down in checkAlerts, where
+  // an account reporting again is what counts as recovered.
+  const { send } = await shouldSend(account.id, 'offline', true, 0, 0, settings.alertRepeatMins);
+  if (!send) return;
+
   const telegram = user.telegramBotToken && user.telegramChatId
     ? { token: decrypt(user.telegramBotToken), chatId: user.telegramChatId }
     : null;

@@ -546,6 +546,7 @@ router.get('/:id/alerts', async (req: AuthRequest, res: Response) => {
       alertEquityBelow: true,
       alertMarginLevel: true,
       alertOffline: true,
+      alertRepeatMins: true,
     },
   });
   if (!dbAccount) {
@@ -555,49 +556,15 @@ router.get('/:id/alerts', async (req: AuthRequest, res: Response) => {
   res.json(dbAccount);
 });
 
-/**
- * PATCH /api/accounts/:id/ai-trade — may the assistant send orders here
- * without anybody pressing confirm?
- *
- * Off everywhere until it is switched on, and meant for a practice
- * account: it is the difference between watching a model draft orders
- * and watching it trade. The EA's own limits still apply — they live in
- * the terminal, and no setting here can raise them.
- */
-router.patch('/:id/ai-trade', async (req: AuthRequest, res: Response) => {
-  const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-  const { enabled } = req.body as { enabled?: boolean };
-
-  const dbAccount = await prisma.account.findFirst({ where: { id, userId: req.user!.id } });
-  if (!dbAccount) {
-    res.status(404).json({ error: 'Account not found' });
-    return;
-  }
-
-  const updated = await prisma.account.update({
-    where: { id },
-    data: { aiAutoTrade: !!enabled },
-    select: { id: true, aiAutoTrade: true, isDemo: true, name: true },
-  });
-
-  // The runtime copy is what every screen reads, so it has to learn
-  // about this too — the live figures on it stay as they are.
-  const live = runtimeStore.getAccountsByUser(req.user!.id).find(a => a.id === id);
-  if (live) runtimeStore.updateAccount(req.user!.id, { ...live, aiAutoTrade: updated.aiAutoTrade });
-  logAudit(req.user!.id, 'ai_auto_trade', 'account', id,
-    JSON.stringify({ name: updated.name, demo: updated.isDemo, enabled: updated.aiAutoTrade }));
-
-  res.json(updated);
-});
-
 // PATCH /api/accounts/:id/alerts — save alert thresholds
 router.patch('/:id/alerts', async (req: AuthRequest, res: Response) => {
   const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-  const { alertDrawdown, alertEquityBelow, alertMarginLevel, alertOffline } = req.body as {
+  const { alertDrawdown, alertEquityBelow, alertMarginLevel, alertOffline, alertRepeatMins } = req.body as {
     alertDrawdown?: number | null;
     alertEquityBelow?: number | null;
     alertMarginLevel?: number | null;
     alertOffline?: boolean;
+    alertRepeatMins?: number | null;
   };
 
   // Verify account belongs to this user
@@ -616,6 +583,12 @@ router.patch('/:id/alerts', async (req: AuthRequest, res: Response) => {
       ...(alertEquityBelow !== undefined && { alertEquityBelow }),
       ...(alertMarginLevel !== undefined && { alertMarginLevel }),
       ...(alertOffline !== undefined && { alertOffline }),
+      // Minutes, never negative, and capped at a day — a floor longer
+      // than that is indistinguishable from switching the alert off,
+      // which the blank threshold above already does properly.
+      ...(alertRepeatMins !== undefined && {
+        alertRepeatMins: Math.min(1440, Math.max(0, Math.round(Number(alertRepeatMins) || 0))),
+      }),
     },
     select: {
       id: true,
@@ -623,6 +596,7 @@ router.patch('/:id/alerts', async (req: AuthRequest, res: Response) => {
       alertEquityBelow: true,
       alertMarginLevel: true,
       alertOffline: true,
+      alertRepeatMins: true,
     },
   });
 

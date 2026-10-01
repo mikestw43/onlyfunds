@@ -84,11 +84,21 @@ model Account {
   alertEquityBelow   Float?
   alertMarginLevel   Float?
   alertOffline       Boolean          @default(false)
+  /// How long the same alert on this account must stay quiet before it
+  /// may be sent again, in minutes. Zero means no floor at all.
+  ///
+  /// A backstop rather than the main defence: what actually stops a
+  /// figure hovering on the line from alerting over and over is the
+  /// recovery margin in alertService, which only re-arms once it has come
+  /// back well clear. This caps the rest.
+  alertRepeatMins    Int              @default(30)
   // Demo / sandbox flag
   isDemo             Boolean          @default(false)
-  /// May the assistant send orders on this account without anybody
-  /// pressing confirm? Off everywhere until it is switched on, and
-  /// meant for a practice account.
+  /// Retired. The assistant used to be able to send an order here
+  /// without anybody pressing confirm; the confirm step is the point, so
+  /// the switch is gone and nothing reads this any more. The column stays
+  /// because dropping one needs --accept-data-loss, which the deploy
+  /// deliberately does not pass.
   aiAutoTrade        Boolean          @default(false)
   // Drawdown Protection
   protectionEnabled  Boolean          @default(false)
@@ -127,6 +137,7 @@ model Account {
   lastPushAt         DateTime?
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
+  alertStates        AlertState[]
   equitySnapshots    EquitySnapshot[]
   closedTrades       ClosedTrade[]
   dailyPnl           DailyPnl[]
@@ -134,6 +145,32 @@ model Account {
   @@index([userId])
   @@index([apiKey])
   @@index([groupId])
+}
+
+/// Where each alert on each account stands, so it survives a restart.
+///
+/// This used to be a Map in the API's memory. The dashboard redeploys
+/// itself every five minutes, and every deploy wiped it — so an account
+/// sitting over its threshold started alerting again from scratch, which
+/// is the opposite of what the cooldown existed for.
+model AlertState {
+  id          String    @id @default(uuid())
+  accountId   String
+  account     Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  /// drawdown | equity | margin | offline
+  type        String
+  /// True while the condition is over the line and has been announced.
+  /// Cleared only when it recovers past the margin, which is what stops a
+  /// figure wobbling across the threshold from alerting on every wobble.
+  firing      Boolean   @default(false)
+  /// The reading when it last alerted, so a condition that gets markedly
+  /// worse can speak up instead of staying silent behind `firing`.
+  lastValue   Float?
+  lastFiredAt DateTime?
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([accountId, type])
+  @@index([accountId])
 }
 
 model EquitySnapshot {

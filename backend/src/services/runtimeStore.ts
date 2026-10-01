@@ -99,7 +99,6 @@ class RuntimeAccountStore {
         groupName: dbAcc.group?.name,
         groupColor: dbAcc.group?.color,
         isDemo: dbAcc.isDemo,
-        aiAutoTrade: dbAcc.aiAutoTrade,
         // Demo accounts run on mock data. Everything else comes back as the
         // last snapshot its EA pushed, so a restart doesn't wipe the numbers
         // back to invented ones. Status stays offline until a push proves
@@ -145,7 +144,6 @@ class RuntimeAccountStore {
     name: string; broker: string; accountNumber: string; apiKey: string;
     server: string; currency: string; leverage: number; groupId?: string;
     isDemo?: boolean;
-    aiAutoTrade?: boolean;
   }): Promise<Account> {
     const dbAcc = await prisma.account.create({
       data: { ...accountData, userId },

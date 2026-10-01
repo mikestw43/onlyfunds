@@ -103,10 +103,9 @@ export const readPlan = (text: string): { plan: Plan | null; rest: string } => {
 };
 
 type Outcome = { row: number; ok: boolean; text: string };
-type State = 'idle' | 'counting' | 'sending' | 'done' | 'cancelled';
+type State = 'idle' | 'sending' | 'done' | 'cancelled';
 
 /** Seconds before an account that trades on its own goes ahead. */
-const AUTO_DELAY = 5;
 
 export const OrderDraftCard = ({ plan }: { plan: Plan }) => {
   const t = useTranslation();
@@ -114,7 +113,6 @@ export const OrderDraftCard = ({ plan }: { plan: Plan }) => {
   const [state, setState] = useState<State>('idle');
   const [outcomes, setOutcomes] = useState<Outcome[]>([]);
   const [risk, setRisk] = useState<RiskSummary | null>(null);
-  const [countdown, setCountdown] = useState(AUTO_DELAY);
   const sentOnce = useRef(false);
 
   const { data: accounts } = useQuery<Account[]>({
@@ -125,7 +123,6 @@ export const OrderDraftCard = ({ plan }: { plan: Plan }) => {
 
   const wanted = plan.account.replace(/[^0-9]/g, '');
   const account = (accounts ?? []).find(a => a.accountNumber.replace(/[^0-9]/g, '') === wanted);
-  const auto = !!account?.aiAutoTrade;
   const opens = rows.filter(r => r.action === 'open');
 
   // What it costs if every stop is hit. Asked of the server, because the
@@ -220,35 +217,6 @@ export const OrderDraftCard = ({ plan }: { plan: Plan }) => {
     setState('done');
   };
 
-  // Always the newest version, so a row edited during the countdown is
-  // the row that gets sent — not the one this card was born with.
-  const sendRef = useRef(sendAll);
-  sendRef.current = sendAll;
-
-  /**
-   * An account that trades on its own still waits a few seconds, so a
-   * plan that is plainly wrong can be stopped by whoever is watching.
-   *
-   * The deadline is a timestamp rather than a countdown variable, and
-   * the guard is "has it been sent" rather than "has it started": in
-   * development React mounts every component twice, which cleared the
-   * first interval and left the card counting 5… for ever.
-   */
-  useEffect(() => {
-    if (!auto || !account || sentOnce.current) return;
-    setState('counting');
-    const deadline = Date.now() + AUTO_DELAY * 1000;
-    const tick = setInterval(() => {
-      const left = Math.ceil((deadline - Date.now()) / 1000);
-      setCountdown(Math.max(0, left));
-      if (left > 0) return;
-      clearInterval(tick);
-      if (sentOnce.current) return;
-      sentOnce.current = true;
-      void sendRef.current();
-    }, 250);
-    return () => clearInterval(tick);
-  }, [auto, account?.id]);
 
   const edit = (i: number, field: keyof Row, value: string) => {
     setRows(list => list.map((r, k) => {
@@ -293,15 +261,15 @@ export const OrderDraftCard = ({ plan }: { plan: Plan }) => {
   return (
     <div style={{
       background: 'var(--bg-card)',
-      border: `1px solid ${finished ? 'var(--border2)' : auto ? 'var(--warning)' : 'var(--accent-blue)'}`,
+      border: `1px solid ${finished ? 'var(--border2)' : 'var(--accent-blue)'}`,
       borderRadius: 'var(--radius-sm)', padding: '12px', minWidth: 0,
     }}>
       <div style={{
         display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px',
         fontFamily: 'var(--ff-label)', fontSize: 'var(--fs-micro)', letterSpacing: '1px',
-        color: auto ? 'var(--warning)' : 'var(--accent-blue)',
+        color: 'var(--accent-blue)',
       }}>
-        <span>{auto ? t('draft.auto_title') : t('draft.title')}</span>
+        <span>{t('draft.title')}</span>
         <span style={{ marginLeft: 'auto', color: 'var(--text-primary)', letterSpacing: 0 }}>
           {account ? `${account.name} · #${account.accountNumber}` : `#${wanted}`}
           {account && (account.isDemo
@@ -394,20 +362,19 @@ export const OrderDraftCard = ({ plan }: { plan: Plan }) => {
         </div>
       )}
 
-      {(state === 'idle' || state === 'counting' || busy) && account && (
+      {(state === 'idle' || busy) && account && (
         <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
           <button
             onClick={() => { sentOnce.current = true; void sendAll(); }}
             disabled={busy}
             style={{
               flex: 2, padding: '11px', borderRadius: 'var(--radius-sm)', border: 'none',
-              background: auto ? 'var(--warning)' : 'var(--accent-blue)', color: '#12151a',
+              background: 'var(--accent-blue)', color: '#12151a',
               fontFamily: 'var(--ff-section)', fontSize: 'var(--fs-section)', letterSpacing: '.5px',
               cursor: busy ? 'default' : 'pointer', opacity: busy ? .6 : 1,
             }}
           >
             {busy ? t('draft.sending')
-              : state === 'counting' ? `${t('draft.auto_in')} ${countdown}…`
               : rows.length > 1 ? `${t('draft.confirm_all')} (${rows.length})`
               : t('draft.confirm')}
           </button>

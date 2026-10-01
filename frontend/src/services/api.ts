@@ -906,11 +906,6 @@ export const priceRisk = async (
   return res.data as RiskSummary;
 };
 
-export const setAccountAiTrade = async (accountId: string, enabled: boolean) => {
-  const res = await api.patch(`/accounts/${accountId}/ai-trade`, { enabled });
-  return res.data as { id: string; aiAutoTrade: boolean; isDemo: boolean; name: string };
-};
-
 export interface CommandRow {
   commandId: string;
   accountId: string;
