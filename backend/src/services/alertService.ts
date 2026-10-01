@@ -1,6 +1,7 @@
 import prisma from '../lib/prisma';
 import { sendTelegramMessage, escapeHtml } from './telegramService';
 import { logNotification } from './notificationLogger';
+import { sendPushToUser } from './webPushService';
 import { checkDrawdownProtection } from './drawdownProtection';
 import { decrypt } from '../lib/encryption';
 import type { Account } from '../mock/data';
@@ -20,6 +21,73 @@ const isOnCooldown = (accountId: string, type: AlertType): boolean => {
 
 const markFired = (accountId: string, type: AlertType): void => {
   cooldowns.set(`${accountId}:${type}`, Date.now());
+};
+
+/**
+ * Strip the Telegram markup out of a message so it can be read anywhere.
+ *
+ * The alert texts are written for Telegram's HTML mode. A push notification
+ * is plain text in a system tray, where a literal <b> is just noise, and
+ * where there is room for about two lines — so the leading "[OnlyFunds]"
+ * and the blank lines go too. The title of the push already says who it is
+ * from.
+ */
+const plain = (html: string): string =>
+  html
+    .replace(/<[^>]+>/g, '')
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
+    .replace(/^\[OnlyFunds\]\s*/, '')
+    .split('\n').map(l => l.trim()).filter(Boolean)
+    .join(' · ');
+
+/**
+ * Send one alert everywhere it should go, and record it either way.
+ *
+ * Telegram used to be the only channel, and the whole check returned early
+ * when it was not configured — so someone who never made a bot got no
+ * alerts at all, and nothing in the bell either. Push needs no setup beyond
+ * tapping "allow" on the phone, so the two are now independent: either can
+ * be off without silencing the other, and the log is written regardless of
+ * which carried it.
+ */
+const deliver = async (
+  userId: string,
+  accountId: string,
+  type: AlertType,
+  html: string,
+  telegram: { token: string; chatId: string } | null,
+): Promise<void> => {
+  const push = sendPushToUser(userId, {
+    title: 'OnlyFunds',
+    body: plain(html),
+    url: '/',
+    // One live alert per account and kind on screen at a time. A margin
+    // warning repeating every five minutes should replace itself, not
+    // bury the rest of the tray.
+    tag: `${type}:${accountId}`,
+  }).catch(err => {
+    console.error('[Alert] push failed:', err?.message);
+    return 0;
+  });
+
+  let telegramOk: boolean | null = null;
+  if (telegram) {
+    telegramOk = await sendTelegramMessage(telegram.token, telegram.chatId, html)
+      .then(() => true)
+      .catch(err => {
+        console.error('[Alert] Telegram send failed:', err.message);
+        return false;
+      });
+  }
+
+  await push;
+  // The flag means "nothing that was set up refused it", not "a channel
+  // existed". The log itself is a channel — it is what the bell in the
+  // header reads — so an alert recorded with no bot and no phone attached
+  // has still reached the person, and marking every one of those as a
+  // failure would paint the whole list red for someone who simply never
+  // connected Telegram.
+  await logNotification(userId, accountId, type, html, telegramOk !== false);
 };
 
 /**
@@ -51,10 +119,13 @@ export const checkAlerts = async (
     },
   });
 
-  if (!user?.telegramBotToken || !user?.telegramChatId) return;
+  if (!user) return;
 
-  const telegramBotToken = decrypt(user.telegramBotToken);
-  const { telegramChatId } = user;
+  // Null when no bot is configured. Not a reason to stop: push does not
+  // need one.
+  const telegram = user.telegramBotToken && user.telegramChatId
+    ? { token: decrypt(user.telegramBotToken), chatId: user.telegramChatId }
+    : null;
 
   // Build threshold lookup by account id
   const thresholds = new Map(user.accounts.map(a => [a.id, a]));
@@ -98,12 +169,8 @@ export const checkAlerts = async (
       if (isOnCooldown(account.id, fire.type)) continue;
       markFired(account.id, fire.type);
       const fullMsg = `[OnlyFunds]\n${fire.message}`;
-      sendTelegramMessage(telegramBotToken, telegramChatId, fullMsg)
-        .then(() => logNotification(userId, account.id, fire.type, fullMsg, true))
-        .catch(err => {
-          console.error(`[Alert] Telegram send failed:`, err.message);
-          logNotification(userId, account.id, fire.type, fullMsg, false);
-        });
+      deliver(userId, account.id, fire.type, fullMsg, telegram)
+        .catch(err => console.error('[Alert] deliver failed:', err?.message));
     }
   }
 
@@ -134,16 +201,14 @@ export const checkOfflineAlert = async (
     },
   });
 
-  if (!user?.telegramBotToken || !user?.telegramChatId) return;
+  if (!user) return;
   if (!user.accounts[0]?.alertOffline) return;
 
   markFired(account.id, 'offline');
-  const botToken = decrypt(user.telegramBotToken);
+  const telegram = user.telegramBotToken && user.telegramChatId
+    ? { token: decrypt(user.telegramBotToken), chatId: user.telegramChatId }
+    : null;
   const offlineMsg = `[OnlyFunds]\n📡 <b>OFFLINE ALERT</b>\n\nAccount: <b>${escapeHtml(account.name)}</b>\nNo data received for 30 seconds.`;
-  sendTelegramMessage(botToken, user.telegramChatId, offlineMsg)
-    .then(() => logNotification(userId, account.id, 'offline', offlineMsg, true))
-    .catch(err => {
-      console.error(`[Alert] Telegram send failed:`, err.message);
-      logNotification(userId, account.id, 'offline', offlineMsg, false);
-    });
+  deliver(userId, account.id, 'offline', offlineMsg, telegram)
+    .catch(err => console.error('[Alert] deliver failed:', err?.message));
 };

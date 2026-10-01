@@ -12,44 +12,45 @@ datasource db {
 }
 
 model User {
-  id               String    @id @default(uuid())
-  email            String    @unique
-  password         String?   // optional — Google-only users have no password
-  googleId         String?   @unique // populated when account is linked to a Google login
-  avatarUrl        String?   // pulled from Google profile when available
+  id               String               @id @default(uuid())
+  email            String               @unique
+  password         String? // optional — Google-only users have no password
+  googleId         String?              @unique // populated when account is linked to a Google login
+  avatarUrl        String? // pulled from Google profile when available
   name             String?
   displayName      String?
   mobile           String?
   phoneCountry     String?
-  role             String    @default("user")
-  status           String    @default("active") // 'active' | 'pending' | 'rejected' | 'suspended'
+  role             String               @default("user")
+  status           String               @default("active") // 'active' | 'pending' | 'rejected' | 'suspended'
   telegramBotToken String?
   telegramChatId   String?
   // Scheduled Reports
-  reportEnabled    Boolean   @default(false)
-  reportFrequency  String    @default("daily")
-  reportTime       String    @default("20:00")
-  reportDay        Int       @default(1)
+  reportEnabled    Boolean              @default(false)
+  reportFrequency  String               @default("daily")
+  reportTime       String               @default("20:00")
+  reportDay        Int                  @default(1)
   // The assistant. Off for everyone but an admin until it is switched on
   // per person: every question is paid for by whoever owns the API key,
   // which is the person running the dashboard, not the one asking.
-  aiEnabled        Boolean   @default(false)
+  aiEnabled        Boolean              @default(false)
   /// Questions a day. 0 means no limit; admins are never limited.
-  aiDailyLimit     Int       @default(30)
+  aiDailyLimit     Int                  @default(30)
   // Preferences
-  language         String    @default("en")
-  theme            String    @default("dark")
-  timezone         String    @default("Asia/Bangkok")
+  language         String               @default("en")
+  theme            String               @default("dark")
+  timezone         String               @default("Asia/Bangkok")
   // Live ticker symbols (JSON array of strings). Null = use server default.
   tickerSymbols    Json?
   passwordResets   PasswordResetToken[]
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
   lastLoginAt      DateTime?
   accounts         Account[]
   accountGroups    AccountGroup[]
   notificationLogs NotificationLog[]
   auditLogs        AuditLog[]
+  pushDevices      PushDevice[]
 }
 
 model AccountGroup {
@@ -66,56 +67,56 @@ model AccountGroup {
 }
 
 model Account {
-  id            String   @id @default(uuid())
-  name          String
-  broker        String
-  accountNumber String
-  apiKey        String   @unique
-  server        String   @default("Unknown")
-  currency      String   @default("USD")
-  leverage      Int      @default(100)
-  userId        String
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  groupId       String?
-  group         AccountGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  id                 String           @id @default(uuid())
+  name               String
+  broker             String
+  accountNumber      String
+  apiKey             String           @unique
+  server             String           @default("Unknown")
+  currency           String           @default("USD")
+  leverage           Int              @default(100)
+  userId             String
+  user               User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  groupId            String?
+  group              AccountGroup?    @relation(fields: [groupId], references: [id], onDelete: SetNull)
   // Alert thresholds (null = disabled)
-  alertDrawdown    Float?
-  alertEquityBelow Float?
-  alertMarginLevel Float?
-  alertOffline     Boolean  @default(false)
+  alertDrawdown      Float?
+  alertEquityBelow   Float?
+  alertMarginLevel   Float?
+  alertOffline       Boolean          @default(false)
   // Demo / sandbox flag
-  isDemo             Boolean  @default(false)
+  isDemo             Boolean          @default(false)
   /// May the assistant send orders on this account without anybody
   /// pressing confirm? Off everywhere until it is switched on, and
   /// meant for a practice account.
-  aiAutoTrade        Boolean  @default(false)
+  aiAutoTrade        Boolean          @default(false)
   // Drawdown Protection
-  protectionEnabled  Boolean  @default(false)
+  protectionEnabled  Boolean          @default(false)
   protectionDrawdown Float?
   // Last snapshot the EA pushed. Persisted so a restarted API shows the
   // figures this account really had, instead of placeholder money — an
   // account whose EA is offline used to come back reading 1,000.
-  balance           Float     @default(0)
-  equity            Float     @default(0)
-  margin            Float     @default(0)
-  freeMargin        Float     @default(0)
-  marginLevel       Float     @default(0)
-  profit            Float     @default(0)
-  drawdown          Float     @default(0)
-  openLots          Float     @default(0)
-  buyLots           Float     @default(0)
-  sellLots          Float     @default(0)
-  pendingOrders     Int       @default(0)
-  todayPnl          Float?
-  closedOrdersToday Int?
-  brokerTimeOffset  Int?
+  balance            Float            @default(0)
+  equity             Float            @default(0)
+  margin             Float            @default(0)
+  freeMargin         Float            @default(0)
+  marginLevel        Float            @default(0)
+  profit             Float            @default(0)
+  drawdown           Float            @default(0)
+  openLots           Float            @default(0)
+  buyLots            Float            @default(0)
+  sellLots           Float            @default(0)
+  pendingOrders      Int              @default(0)
+  todayPnl           Float?
+  closedOrdersToday  Int?
+  brokerTimeOffset   Int?
   /// Every symbol the broker offers on this account, as the EA last listed
   /// them (JSON array of names). It is what the NEW TRADE box searches. The
   /// reporter only sends it occasionally — a broker's list runs to hundreds
   /// of names and does not change between ticks — so this is the copy that
   /// survives both restarts and the gaps between pushes.
-  symbols           Json?
-  symbolsAt         DateTime?
+  symbols            Json?
+  symbolsAt          DateTime?
   /// What a lot of each symbol in use is worth, straight from the
   /// terminal: contract size, tick value, the volume steps, the live
   /// bid and ask and a 14-day ATR. Sent by EA v1.4 and up. Without
@@ -123,12 +124,12 @@ model Account {
   specs              Json?
   specsAt            DateTime?
   /// When that snapshot arrived — null means the EA has never connected.
-  lastPushAt        DateTime?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-  equitySnapshots  EquitySnapshot[]
-  closedTrades     ClosedTrade[]
-  dailyPnl         DailyPnl[]
+  lastPushAt         DateTime?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  equitySnapshots    EquitySnapshot[]
+  closedTrades       ClosedTrade[]
+  dailyPnl           DailyPnl[]
 
   @@index([userId])
   @@index([apiKey])
@@ -149,49 +150,78 @@ model EquitySnapshot {
 }
 
 model ClosedTrade {
-  id         String   @id @default(uuid())
+  id              String   @id @default(uuid())
   /// Null once the account is removed from the dashboard. The row stays: the
   /// calendar is the record of what was actually traded, and taking an account
   /// off the screen is not a claim that its trades never happened.
-  accountId  String?
-  account    Account? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  accountId       String?
+  account         Account? @relation(fields: [accountId], references: [id], onDelete: SetNull)
   /// Owner and a snapshot of the account, so a detached row can still be
   /// found, labelled and converted to USD without the account to read it from.
   userId          String?
   accountName     String?
   accountCurrency String?
-  accountIsDemo   Boolean @default(false)
+  accountIsDemo   Boolean  @default(false)
   /// The closing deal's own ticket.
   ///
   /// A position closed in parts produces one deal per part, all sharing the
   /// position id. Keying on the position id made the second part overwrite the
   /// first — the earlier day lost its profit and the total came out wrong.
   /// Null on rows written before this, and on the position-diff fallback.
-  dealTicket Int?
+  dealTicket      Int?
   /// "deal" — reported by the EA from the broker's own deal history, exact.
   /// "detected" — guessed from a position that vanished from the open list:
   /// the close time is when the server noticed and the profit is the last
   /// floating figure. Only ever right by accident, so it is marked.
-  source     String   @default("deal")
+  source          String   @default("deal")
   /// The position id. No longer the key, but still what a trade is called.
-  ticket     Int
-  symbol     String
-  type       String
-  lots       Float
-  openPrice  Float
-  closePrice Float
-  profit     Float
-  swap       Float    @default(0)
-  commission Float    @default(0)
-  openTime   DateTime
-  closeTime  DateTime @default(now())
-  sl         Float    @default(0)
-  tp         Float    @default(0)
+  ticket          Int
+  symbol          String
+  type            String
+  lots            Float
+  openPrice       Float
+  closePrice      Float
+  profit          Float
+  swap            Float    @default(0)
+  commission      Float    @default(0)
+  openTime        DateTime
+  closeTime       DateTime @default(now())
+  sl              Float    @default(0)
+  tp              Float    @default(0)
 
   @@unique([accountId, dealTicket])
   @@index([accountId, closeTime])
   @@index([userId, closeTime])
   @@index([accountId])
+}
+
+/// One phone (or desktop browser) that has agreed to receive alerts.
+///
+/// A person has as many rows here as they have devices, and each is the
+/// address the push service gave us for that one browser on that one
+/// device — not something we chose, and not something that identifies
+/// them anywhere else. The keys are the browser's own; a push is
+/// encrypted to them so the push service relaying it cannot read it.
+model PushDevice {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// The push service's URL for this browser. Unique: a browser that
+  /// re-subscribes gets the same endpoint back, and must not pile up rows
+  /// that would each deliver the same alert again.
+  endpoint  String    @unique
+  p256dh    String
+  auth      String
+  /// What the browser called itself when it subscribed, so the settings
+  /// page can say "iPhone" rather than a 300-character URL.
+  label     String?
+  createdAt DateTime  @default(now())
+  /// Last time the push service accepted a message for this device. A
+  /// device that has gone quiet for months is almost certainly a browser
+  /// that was uninstalled without telling us.
+  lastOkAt  DateTime?
+
+  @@index([userId])
 }
 
 model NotificationLog {
@@ -304,25 +334,25 @@ model EaFile {
 /// simply keeps that number instead of throwing it away. The stored trades are
 /// still what the list is made of, but they no longer decide the total.
 model DailyPnl {
-  id        String   @id @default(uuid())
+  id              String   @id @default(uuid())
   /// Null once the account is removed. The day stays: the calendar is the
   /// record of what was really traded.
-  accountId String?
-  account   Account? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  accountId       String?
+  account         Account? @relation(fields: [accountId], references: [id], onDelete: SetNull)
   /// Snapshot of the owner, so a detached day is still attributable.
   userId          String?
   accountName     String?
   accountCurrency String?
-  accountIsDemo   Boolean @default(false)
+  accountIsDemo   Boolean  @default(false)
   /// YYYY-MM-DD as the broker's own clock reads it.
-  brokerDate String
+  brokerDate      String
   /// Realized profit + swap + commission for that broker day, in the
   /// account's currency, exactly as MT5 totals it.
-  netProfit  Float
+  netProfit       Float
   /// How many closing deals MT5 counted that day.
-  deals      Int      @default(0)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  deals           Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   @@unique([accountId, brokerDate])
   @@index([userId, brokerDate])
@@ -337,15 +367,15 @@ model DailyPnl {
 /// rather than deleted, so a link that arrives twice can be told from one
 /// that was never issued.
 model PasswordResetToken {
-  id        String   @id @default(uuid())
+  id        String    @id @default(uuid())
   userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   /// SHA-256 of the token that went out in the email. The token itself is
   /// never written down anywhere.
-  tokenHash String   @unique
+  tokenHash String    @unique
   expiresAt DateTime
   usedAt    DateTime?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
   @@index([userId])
   @@index([expiresAt])
@@ -359,9 +389,9 @@ model EmailLog {
   id        String   @id @default(uuid())
   to        String
   subject   String
-  kind      String   // 'approval' | 'rejection' | 'reset' | 'google-notice' | 'other'
-  status    String   // 'sent' | 'failed' | 'skipped' | 'not_configured'
-  detail    String?  // the provider's id, or the reason it did not go
+  kind      String // 'approval' | 'rejection' | 'reset' | 'google-notice' | 'other'
+  status    String // 'sent' | 'failed' | 'skipped' | 'not_configured'
+  detail    String? // the provider's id, or the reason it did not go
   createdAt DateTime @default(now())
 
   @@index([createdAt])
@@ -375,17 +405,17 @@ model EmailLog {
 /// never picked up at all, and the person who pressed the button is owed
 /// that answer.
 model CommandLog {
-  id         String   @id @default(uuid())
-  commandId  String   @unique      // the id handed to the EA
-  accountId  String
-  userId     String
-  type       String                // OPEN_TRADE | CLOSE_POSITION | SET_SLTP | CLOSE_ALL
-  detail     String?               // what was asked, in words
-  status     String   @default("queued") // queued | sent | done | failed | dropped
-  result     String?               // ticket number, or the reason it failed
-  createdAt  DateTime @default(now())
-  sentAt     DateTime?
-  settledAt  DateTime?
+  id        String    @id @default(uuid())
+  commandId String    @unique // the id handed to the EA
+  accountId String
+  userId    String
+  type      String // OPEN_TRADE | CLOSE_POSITION | SET_SLTP | CLOSE_ALL
+  detail    String? // what was asked, in words
+  status    String    @default("queued") // queued | sent | done | failed | dropped
+  result    String? // ticket number, or the reason it failed
+  createdAt DateTime  @default(now())
+  sentAt    DateTime?
+  settledAt DateTime?
 
   @@index([accountId, createdAt])
   @@index([userId, createdAt])
@@ -430,10 +460,10 @@ model AiMessage {
   id        String   @id @default(uuid())
   chatId    String
   chat      AiChat   @relation(fields: [chatId], references: [id], onDelete: Cascade)
-  role      String   // 'user' | 'assistant'
+  role      String // 'user' | 'assistant'
   text      String
   photos    Int      @default(0)
-  model     String?  // which model answered, for an answer
+  model     String? // which model answered, for an answer
   createdAt DateTime @default(now())
 
   @@index([chatId, createdAt])

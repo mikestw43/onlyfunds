@@ -2,6 +2,10 @@ import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useUIStore } from '../../stores/uiStore';
 import { useTranslation } from '../../i18n/useTranslation';
+import {
+  getState as getPushState, enablePush, disablePush, sendTestPush,
+  type PushState,
+} from '../../services/push';
 import { useAuthStore } from '../../stores/authStore';
 import { AiSettings } from './AiSettings';
 import { AiMemory } from './AiMemory';
@@ -229,6 +233,87 @@ const TelegramTab = () => {
   );
 };
 
+/* ── Phone notifications ──────────────────────────────────
+   One card per device, because a subscription belongs to the browser it
+   was granted in: switching it on here is about this phone, not about the
+   account. Someone with a phone and a laptop turns it on twice. */
+const PushCard = () => {
+  const t = useTranslation();
+  const addToast = useUIStore(s => s.addToast);
+  const [state, setState] = useState<PushState | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => { getPushState().then(setState); }, []);
+
+  const toggle = async () => {
+    setBusy(true);
+    try {
+      setState(state === 'on' ? await disablePush() : await enablePush());
+    } catch (err) {
+      console.error('[push] toggle failed:', err);
+      addToast({ type: 'error', title: t('settings.push_failed') });
+      setState(await getPushState());
+    } finally { setBusy(false); }
+  };
+
+  const test = async () => {
+    setBusy(true);
+    try {
+      const sent = await sendTestPush();
+      addToast(sent > 0
+        ? { type: 'success', title: t('settings.push_test_sent').replace('{n}', String(sent)) }
+        : { type: 'error', title: t('settings.push_test_none') });
+    } catch { addToast({ type: 'error', title: t('settings.push_failed') }); }
+    finally { setBusy(false); }
+  };
+
+  // Nothing to offer until we know; the control would otherwise flip from
+  // "turn on" to "turn off" a moment after the page draws.
+  if (state === null) return null;
+
+  // Both of these are the person's to fix in their own settings, not ours,
+  // so the card explains instead of offering a button that cannot work.
+  const blocked = state === 'needs-install' || state === 'denied' || state === 'unsupported';
+  const blockedText = state === 'needs-install' ? t('settings.push_install')
+    : state === 'denied' ? t('settings.push_denied')
+    : t('settings.push_unsupported');
+
+  return (
+    <div style={{ ...card, marginBottom: '14px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px', gap: '8px' }}>
+        <div style={cardTitle}>{t('settings.push_title')}</div>
+        {state === 'on' && (
+          <span style={{ fontFamily: 'var(--ff-label)', fontSize: 'var(--fs-label)', padding: '3px 8px', border: '1px solid rgba(52,211,153,.4)', color: 'var(--green)' }}>
+            {t('settings.push_on')}
+          </span>
+        )}
+      </div>
+      <p style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-body-sm)', color: 'var(--text-dim)', marginBottom: '12px', lineHeight: 1.6 }}>
+        {blocked ? blockedText : t('settings.push_intro')}
+      </p>
+      {!blocked && (
+        <>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <button onClick={toggle} disabled={busy} style={state === 'on' ? { ...btnGhost, opacity: busy ? .4 : 1 } : btnPrimary(busy)}>
+              {busy ? t('settings.push_working') : state === 'on' ? t('settings.push_disable') : t('settings.push_enable')}
+            </button>
+            {state === 'on' && (
+              <button onClick={test} disabled={busy} style={{ ...btnGhost, opacity: busy ? .4 : 1 }}>
+                {t('settings.push_test')}
+              </button>
+            )}
+          </div>
+          {state === 'on' && /Android/.test(navigator.userAgent) && (
+            <p style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-micro)', color: 'var(--text-dim)', marginTop: '10px', lineHeight: 1.6 }}>
+              {t('settings.push_android_note')}
+            </p>
+          )}
+        </>
+      )}
+    </div>
+  );
+};
+
 /* ── Notifications tab ────────────────────────────────── */
 const TYPE_COLOR: Record<string, string> = {
   drawdown: 'var(--yellow)', equity: 'var(--cyan)', margin: 'var(--red)',
@@ -263,6 +348,8 @@ const NotificationsTab = () => {
   };
 
   return (
+    <>
+    <PushCard />
     <div style={card}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -326,5 +413,6 @@ const NotificationsTab = () => {
         </div>
       )}
     </div>
+    </>
   );
 };
