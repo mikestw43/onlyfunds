@@ -1,4 +1,16 @@
 //+------------------------------------------------------------------+
+//| OnlyFunds Report v1.5                                            |
+//|                                                                  |
+//| GENERATED FILE - do not edit.                                    |
+//| Source: ea/OnlyFunds_Reporter_v1.5.mq5                           |
+//| Rebuild: python3 scripts/build-ea-variants.py                    |
+//+------------------------------------------------------------------+
+// Reports this account to the dashboard. It contains no trading
+// code at all: there is no setting to switch on, and nothing the
+// server sends can make it place, change or close an order.
+// This is the one for accounts where real money is working.
+
+//+------------------------------------------------------------------+
 //|                                      OnlyFunds_Reporter_v1.4.mq5 |
 //|                         OnlyFunds MT5 Dashboard EA               |
 //|                                                                  |
@@ -88,7 +100,7 @@
 //|  Edit THIS file. The two generated ones are overwritten.         |
 //+------------------------------------------------------------------+
 #property copyright "OnlyFunds"
-#property version   "1.4"
+#property version   "1.5"
 #ifdef ONLYFUNDS_AI
 #property description "OnlyFunds AI v1.4: reports the account, and carries out dashboard commands when EnableTrading is on"
 #else

@@ -11,57 +11,46 @@ type EaRelease = {
   version: string;
   description: string;
   downloads: DownloadVariant[];
-  /** Said in full, in warning colours, above the buttons. */
-  warning?: string;
 };
 
 /** EA catalog — one entry per EA, with both platform variants inside. */
 const EA_RELEASES: EaRelease[] = [
   {
     name: 'OnlyFunds AI',
-    version: 'v1.4',
+    version: 'v1.5',
     description:
       'Reports the account AND carries out the orders the dashboard sends, ' +
       'once you set EnableTrading = true on its chart. Also closes part of a ' +
       'position, and sends the contract figures the assistant needs before ' +
       'it will say anything about lot sizes. Put this one on a demo account ' +
-      'first. Take the .EX5 — it is already compiled and installs straight ' +
-      'into MQL5/Experts. The .MQ5 is the source it was built from.',
+      'first. Open it in MetaEditor and compile it (F7), then it installs ' +
+      'into MQL5/Experts like any other.',
+    // No .EX5 for this version yet: MetaEditor is the only thing that
+    // compiles MQL5 and it does not run where this is built, so one
+    // appears here when it has been compiled. A button for a file that is
+    // not there would just 404.
     downloads: [
-      { platform: 'MT5', filename: 'OnlyFunds_AI_v1.4.ex5', ext: '.EX5' },
-      { platform: 'MT5', filename: 'OnlyFunds_AI_v1.4.mq5', ext: '.MQ5 SOURCE' },
+      { platform: 'MT5', filename: 'OnlyFunds_AI_v1.5.mq5', ext: '.MQ5 SOURCE' },
     ],
-    // MetaEditor is the only thing that can compile MQL5 and it does not
-    // run where this is built, so the .EX5 here is whatever was last
-    // compiled by hand. It is behind the source right now and the
-    // difference matters: the older build tells the dashboard an order
-    // succeeded without mentioning that its stop was refused.
-    warning:
-      'The .EX5 is the previous build. Take the .MQ5 SOURCE and compile it '
-      + '(open it in MetaEditor, press F7) — the older one reports an order '
-      + 'as done even when the stop loss was refused, so a position can end '
-      + 'up open with nothing protecting it and nothing saying so.',
   },
   {
     name: 'OnlyFunds Report',
-    version: 'v1.4',
+    version: 'v1.5',
     description:
       'The same reporting and the same contract figures, with the trading ' +
       'code left out of the build entirely — not switched off: absent. There ' +
       'is no setting to find and nothing the server sends can make it place, ' +
       'change or close an order. This is the one for accounts where real ' +
-      'money is working. Take the .EX5 — it is already compiled. The .MQ5 is ' +
-      'the source it was built from, if you would rather read it first.',
+      'money is working. Open it in MetaEditor and compile it (F7) first.',
     downloads: [
-      { platform: 'MT5', filename: 'OnlyFunds_Report_v1.4.ex5', ext: '.EX5' },
-      { platform: 'MT5', filename: 'OnlyFunds_Report_v1.4.mq5', ext: '.MQ5 SOURCE' },
+      { platform: 'MT5', filename: 'OnlyFunds_Report_v1.5.mq5', ext: '.MQ5 SOURCE' },
     ],
   },
   {
     name: 'OnlyFunds Reporter',
     version: 'v1.1',
     description:
-      'The old report-only build, kept for MT4 — v1.4 is MT5 only, and this ' +
+      'The old report-only build, kept for MT4 — v1.5 is MT5 only, and this ' +
       'is the only .MQ4 there is. On MT5 take OnlyFunds Report instead: it ' +
       'reports the same things and adds the contract figures the assistant ' +
       'needs before it will say anything about lot sizes.',
@@ -144,17 +133,6 @@ export const DownloadPage = () => {
               }}>
                 {ea.description}
               </div>
-              {ea.warning && (
-                <div style={{
-                  fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-body-sm)',
-                  color: 'var(--warning)', marginTop: '8px', lineHeight: 1.6,
-                  border: '1px solid rgba(251,191,36,.35)',
-                  background: 'rgba(251,191,36,.06)',
-                  borderRadius: 'var(--radius-sm)', padding: '8px 10px',
-                }}>
-                  ⚠ {ea.warning}
-                </div>
-              )}
             </div>
 
             {/* Compact download buttons — sit inline, no nested tile box */}

@@ -1,8 +1,8 @@
 //+------------------------------------------------------------------+
-//| OnlyFunds AI v1.4                                                |
+//| OnlyFunds AI v1.5                                                |
 //|                                                                  |
 //| GENERATED FILE - do not edit.                                    |
-//| Source: ea/OnlyFunds_Reporter_v1.4.mq5                           |
+//| Source: ea/OnlyFunds_Reporter_v1.5.mq5                           |
 //| Rebuild: python3 scripts/build-ea-variants.py                    |
 //+------------------------------------------------------------------+
 // Reports this account AND carries out the orders the dashboard
@@ -101,7 +101,7 @@
 //|  Edit THIS file. The two generated ones are overwritten.         |
 //+------------------------------------------------------------------+
 #property copyright "OnlyFunds"
-#property version   "1.4"
+#property version   "1.5"
 #ifdef ONLYFUNDS_AI
 #property description "OnlyFunds AI v1.4: reports the account, and carries out dashboard commands when EnableTrading is on"
 #else
