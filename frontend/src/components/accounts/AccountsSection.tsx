@@ -237,7 +237,15 @@ const AlertThresholdsDialog = ({ account, onClose }: { account: Account; onClose
 
   const mutation = useMutation({
     mutationFn: () => saveAccountAlerts(account.id, form),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['account-alerts', account.id] }); addToast({ type: 'success', title: t('acc.alerts_saved') }); onClose(); },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['account-alerts', account.id] });
+      // The button's colour is read off the accounts list, not off this
+      // dialog, so that has to be refetched too or it stays grey until
+      // something else happens to reload it.
+      queryClient.invalidateQueries({ queryKey: ['accounts'] });
+      addToast({ type: 'success', title: t('acc.alerts_saved') });
+      onClose();
+    },
     onError: () => { addToast({ type: 'error', title: t('acc.alerts_failed') }); },
   });
 
@@ -598,13 +606,19 @@ export const AccountsSection = () => {
 
                   {/* Row 4: actions — right-aligned */}
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px', marginTop: '2px' }}>
+                    {/* Green once anything is set on this account, so a
+                        row of these says which are being watched without
+                        opening each one. */}
                     <button
                       onClick={() => setAlertTarget(acc)}
                       title={t('acc.alerts_title')}
                       style={{
                         display: 'inline-flex', alignItems: 'center', gap: '6px',
-                        background: 'none', border: '1px solid var(--border2)', borderRadius: 'var(--radius-sm)',
-                        color: 'var(--text-dim)', cursor: 'pointer',
+                        background: acc.alertsArmed ? 'rgba(52,211,153,.08)' : 'none',
+                        border: `1px solid ${acc.alertsArmed ? 'rgba(52,211,153,.45)' : 'var(--border2)'}`,
+                        borderRadius: 'var(--radius-sm)',
+                        color: acc.alertsArmed ? 'var(--green)' : 'var(--text-dim)',
+                        cursor: 'pointer',
                         padding: '5px 10px',
                         fontFamily: 'var(--ff-section)', fontSize: 'var(--fs-section)', letterSpacing: '.5px',
                       }}

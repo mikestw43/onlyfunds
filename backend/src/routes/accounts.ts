@@ -600,6 +600,20 @@ router.patch('/:id/alerts', async (req: AuthRequest, res: Response) => {
     },
   });
 
+  // The list every screen reads is the runtime copy, so it has to learn
+  // that this account is armed now — otherwise the mark on the button
+  // would not appear until the server next reloaded from the database.
+  const live = runtimeStore.getAccountsByUser(req.user!.id).find(a => a.id === id);
+  if (live) {
+    runtimeStore.updateAccount(req.user!.id, {
+      ...live,
+      alertsArmed: updated.alertDrawdown !== null
+        || updated.alertEquityBelow !== null
+        || updated.alertMarginLevel !== null
+        || updated.alertOffline,
+    });
+  }
+
   logAudit(req.user!.id, 'update_alerts', 'account', id, JSON.stringify(updated));
 
   res.json(updated);

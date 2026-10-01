@@ -63,6 +63,8 @@ export interface Account {
   groupName?: string;
   groupColor?: string;
   isDemo?: boolean;
+  /** True when this account has any alert threshold set. */
+  alertsArmed?: boolean;
   protectionEnabled?: boolean;
   protectionDrawdown?: number | null;
   brokerTimeOffset?: number | null;

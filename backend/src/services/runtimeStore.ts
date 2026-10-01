@@ -99,6 +99,13 @@ class RuntimeAccountStore {
         groupName: dbAcc.group?.name,
         groupColor: dbAcc.group?.color,
         isDemo: dbAcc.isDemo,
+        // Whether this account has any alert set, so the list can show it
+        // at a glance. The thresholds themselves stay on their own
+        // endpoint — this is one bit, not the settings.
+        alertsArmed: dbAcc.alertDrawdown !== null
+          || dbAcc.alertEquityBelow !== null
+          || dbAcc.alertMarginLevel !== null
+          || dbAcc.alertOffline,
         // Demo accounts run on mock data. Everything else comes back as the
         // last snapshot its EA pushed, so a restart doesn't wipe the numbers
         // back to invented ones. Status stays offline until a push proves
