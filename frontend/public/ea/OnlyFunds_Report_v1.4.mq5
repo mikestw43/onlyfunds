@@ -844,6 +844,15 @@ void Ack(string id, bool ok, string detail, ulong ticket = 0)
    g_ackJson += "{\"id\":\"" + EscapeJson(id) + "\",\"ok\":" + (ok ? "true" : "false");
    if(ticket > 0) g_ackJson += ",\"ticket\":" + IntegerToString((long)ticket);
    if(!ok)        g_ackJson += ",\"error\":\"" + EscapeJson(detail) + "\"";
+   // The detail goes back whether it worked or not.
+   //
+   // It used to be sent only on a failure, which hid the one outcome that
+   // most needed saying: a market order opens, the stop is set from the
+   // fill a moment later, and if that second step is refused the order is
+   // still open — so this acknowledges success while the position sits
+   // there unprotected. The dashboard showed "done", the terminal showed
+   // no stop, and the reason existed only in this expert's own log.
+   if(detail != "") g_ackJson += ",\"detail\":\"" + EscapeJson(detail) + "\"";
    g_ackJson += "}";
    g_ackCount++;
 

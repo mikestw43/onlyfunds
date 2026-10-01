@@ -11,6 +11,8 @@ type EaRelease = {
   version: string;
   description: string;
   downloads: DownloadVariant[];
+  /** Said in full, in warning colours, above the buttons. */
+  warning?: string;
 };
 
 /** EA catalog — one entry per EA, with both platform variants inside. */
@@ -29,6 +31,16 @@ const EA_RELEASES: EaRelease[] = [
       { platform: 'MT5', filename: 'OnlyFunds_AI_v1.4.ex5', ext: '.EX5' },
       { platform: 'MT5', filename: 'OnlyFunds_AI_v1.4.mq5', ext: '.MQ5 SOURCE' },
     ],
+    // MetaEditor is the only thing that can compile MQL5 and it does not
+    // run where this is built, so the .EX5 here is whatever was last
+    // compiled by hand. It is behind the source right now and the
+    // difference matters: the older build tells the dashboard an order
+    // succeeded without mentioning that its stop was refused.
+    warning:
+      'The .EX5 is the previous build. Take the .MQ5 SOURCE and compile it '
+      + '(open it in MetaEditor, press F7) — the older one reports an order '
+      + 'as done even when the stop loss was refused, so a position can end '
+      + 'up open with nothing protecting it and nothing saying so.',
   },
   {
     name: 'OnlyFunds Report',
@@ -132,6 +144,17 @@ export const DownloadPage = () => {
               }}>
                 {ea.description}
               </div>
+              {ea.warning && (
+                <div style={{
+                  fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-body-sm)',
+                  color: 'var(--warning)', marginTop: '8px', lineHeight: 1.6,
+                  border: '1px solid rgba(251,191,36,.35)',
+                  background: 'rgba(251,191,36,.06)',
+                  borderRadius: 'var(--radius-sm)', padding: '8px 10px',
+                }}>
+                  ⚠ {ea.warning}
+                </div>
+              )}
             </div>
 
             {/* Compact download buttons — sit inline, no nested tile box */}

@@ -88,7 +88,7 @@
 //|  Edit THIS file. The two generated ones are overwritten.         |
 //+------------------------------------------------------------------+
 #property copyright "OnlyFunds"
-#property version   "1.5"
+#property version   "1.4"
 #ifdef ONLYFUNDS_AI
 #property description "OnlyFunds AI v1.4: reports the account, and carries out dashboard commands when EnableTrading is on"
 #else
