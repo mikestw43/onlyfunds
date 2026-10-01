@@ -256,7 +256,11 @@ const AlertThresholdsDialog = ({ account, onClose }: { account: Account; onClose
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <p style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-body-sm)', color: 'var(--text-dim)', lineHeight: 1.6 }}>
-            Leave a field blank to disable that alert. Requires Telegram in Profile Settings.
+            {/* It no longer requires Telegram, and saying so was keeping
+                people from setting any threshold at all: alerts now reach
+                a phone over push and are written to the log the bell
+                reads, whether or not a bot was ever configured. */}
+            {t('acc.alerts_hint')}
           </p>
 
           <NumField label={t('acc.alert_dd')} value={form.alertDrawdown} onChange={v => setForm(p => ({ ...p, alertDrawdown: v }))} onClear={() => setForm(p => ({ ...p, alertDrawdown: null }))} placeholder="e.g. 10" unit="%" />

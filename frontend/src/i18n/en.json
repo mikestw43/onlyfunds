@@ -576,6 +576,7 @@
   "admin.no_match": "No users match the current filter",
   "reports.title2": "SCHEDULED REPORTS",
   "acc.alerts_dialog": "ALERT THRESHOLDS",
+  "acc.alerts_hint": "Leave a field blank to switch that alert off. One set of thresholds feeds every channel: phone notifications, Telegram if it is set up, and the bell in the header.",
   "acc.alert_dd": "DRAWDOWN ALERT (fire when DD ≥)",
   "acc.alert_eq": "EQUITY ALERT (fire when equity drops below)",
   "acc.alert_ml": "MARGIN LEVEL ALERT (fire when margin level ≤)",
