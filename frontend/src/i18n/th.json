@@ -413,6 +413,7 @@
   "settings.push_disable": "ปิด",
   "settings.push_working": "กำลังทำงาน...",
   "settings.push_test": "ส่งทดสอบ",
+  "settings.push_local": "ลองแสดงบนเครื่องนี้",
   "settings.push_test_sent": "ส่งทดสอบไปแล้ว {n} เครื่อง",
   "settings.push_test_none": "ยังไม่มีเครื่องไหนเปิดรับ",
   "settings.push_denied": "เบราว์เซอร์นี้บล็อกการแจ้งเตือนอยู่ ต้องไปอนุญาตให้เว็บนี้ในตั้งค่าของเบราว์เซอร์ก่อน แล้วค่อยกลับมา",

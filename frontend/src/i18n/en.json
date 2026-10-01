@@ -413,6 +413,7 @@
   "settings.push_disable": "Turn off",
   "settings.push_working": "Working...",
   "settings.push_test": "Send a test",
+  "settings.push_local": "Show one here",
   "settings.push_test_sent": "Test sent to {n} device(s).",
   "settings.push_test_none": "No device is listening yet.",
   "settings.push_denied": "This browser is blocking notifications. Allow them for this site in the browser's own settings, then come back.",

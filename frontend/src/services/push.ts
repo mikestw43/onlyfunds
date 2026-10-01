@@ -269,6 +269,37 @@ export const diagnostics = async (): Promise<string> => {
   return bits.join(' · ');
 };
 
+/**
+ * Raise a notification on this device without any push at all.
+ *
+ * This splits the chain in half, which nothing else here can do. A push
+ * that APNs accepts and the phone never shows could be failing at
+ * delivery, at decryption, in the worker, or at iOS deciding not to
+ * display it — and from the home screen those are one symptom. This
+ * exercises only the last part. If this appears and a pushed one does
+ * not, the fault is in getting it to the phone; if neither appears, the
+ * phone is choosing not to show them and no amount of work on the server
+ * will change that.
+ */
+export const showLocalNotification = async (): Promise<void> => {
+  const reg = await navigator.serviceWorker.getRegistration('/');
+  if (!reg) throw new Error('No service worker is registered on this device.');
+  await reg.showNotification('OnlyFunds', {
+    body: 'Local test — this one never left the phone.',
+    icon: '/apple-touch-icon.png',
+    badge: '/apple-touch-icon.png',
+    tag: 'local-test',
+  });
+  // And the icon, by the same split: set from the page rather than from a
+  // push, so a badge that never moves can be told from a push that never
+  // arrives.
+  try {
+    await navigator.setAppBadge?.(1);
+  } catch {
+    throw new Error('The notification was shown, but this device refused to set a badge.');
+  }
+};
+
 export const sendTestPush = async (): Promise<TestResult> => {
   const { data } = await api.post<TestResult>('/push/test', {});
   return data;

@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useUIStore } from '../../stores/uiStore';
 import { useTranslation } from '../../i18n/useTranslation';
 import {
-  getState as getPushState, enablePush, disablePush, sendTestPush, listDevices, prepare, diagnostics, syncSubscription,
+  getState as getPushState, enablePush, disablePush, sendTestPush, listDevices, prepare, diagnostics, syncSubscription, showLocalNotification,
   type PushState, type PushDevice,
 } from '../../services/push';
 import { useAuthStore } from '../../stores/authStore';
@@ -293,6 +293,17 @@ const PushCard = () => {
     } finally { setBusy(false); }
   };
 
+  const local = async () => {
+    setBusy(true);
+    setEnableError('');
+    try {
+      await showLocalNotification();
+    } catch (err) {
+      setEnableError(String((err as Error)?.message || err));
+      addToast({ type: 'error', title: t('settings.push_failed') });
+    } finally { setBusy(false); }
+  };
+
   const test = async () => {
     setBusy(true);
     try {
@@ -361,6 +372,15 @@ const PushCard = () => {
             {devices.length > 0 && (
               <button onClick={test} disabled={busy} style={{ ...btnGhost, opacity: busy ? .4 : 1 }}>
                 {t('settings.push_test')}
+              </button>
+            )}
+            {/* The other half of the same question: this one never leaves
+                the device, so it answers whether the phone will display a
+                notification at all, separately from whether one can reach
+                it. */}
+            {state === 'on' && (
+              <button onClick={local} disabled={busy} style={{ ...btnGhost, opacity: busy ? .4 : 1 }}>
+                {t('settings.push_local')}
               </button>
             )}
           </div>
