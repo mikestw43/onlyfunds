@@ -86,7 +86,9 @@ router.post('/unsubscribe', async (req: AuthRequest, res: Response) => {
  */
 router.post('/test', async (req: AuthRequest, res: Response) => {
   const result = await sendPushToUser(req.user!.id, {
-    title: 'OnlyFunds',
+    // Not "OnlyFunds": iOS prints the app's name above the title itself,
+    // and this one read "OnlyFunds from OnlyFunds".
+    title: 'Test notification',
     body: 'Push notifications are working on this device.',
     tag: 'push-test',
   });

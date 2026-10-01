@@ -112,7 +112,9 @@ self.addEventListener('push', (event) => {
     data = { body: event.data ? event.data.text() : '' };
   }
 
-  const title = data.title || 'OnlyFunds';
+  // iOS prints the web app's name above the title, so falling back to
+  // "OnlyFunds" rendered as "OnlyFunds from OnlyFunds".
+  const title = data.title || 'Alert';
   const body = data.body || 'New activity on your accounts.';
 
   event.waitUntil((async () => {

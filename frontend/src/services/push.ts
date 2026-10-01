@@ -284,8 +284,9 @@ export const diagnostics = async (): Promise<string> => {
 export const showLocalNotification = async (): Promise<void> => {
   const reg = await navigator.serviceWorker.getRegistration('/');
   if (!reg) throw new Error('No service worker is registered on this device.');
-  await reg.showNotification('OnlyFunds', {
-    body: 'Local test — this one never left the phone.',
+  // Not "OnlyFunds": iOS prints the app's own name above the title.
+  await reg.showNotification('Local test', {
+    body: 'This one never left the phone.',
     icon: '/apple-touch-icon.png',
     badge: '/apple-touch-icon.png',
     tag: 'local-test',

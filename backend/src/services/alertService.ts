@@ -32,13 +32,35 @@ const markFired = (accountId: string, type: AlertType): void => {
  * and the blank lines go too. The title of the push already says who it is
  * from.
  */
-const plain = (html: string): string =>
+const plain = (html: string): string[] =>
   html
     .replace(/<[^>]+>/g, '')
     .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
     .replace(/^\[OnlyFunds\]\s*/, '')
-    .split('\n').map(l => l.trim()).filter(Boolean)
-    .join(' · ');
+    .split('\n').map(l => l.trim()).filter(Boolean);
+
+/**
+ * Split an alert into the two lines a phone shows.
+ *
+ * iOS prints the web app's own name above whatever title is given, so a
+ * title of "OnlyFunds" renders as "OnlyFunds from OnlyFunds" and the one
+ * line read at a glance says nothing. The headline and the account go in
+ * the title instead — "DRAWDOWN ALERT · Gold Scalper" — and the figures
+ * follow in the body, which is what a notification is for: knowing
+ * whether to open it.
+ */
+const forPhone = (html: string): { title: string; body: string } => {
+  const lines = plain(html);
+  const head = lines[0] || 'Alert';
+  const account = lines.find(l => /^Account:/i.test(l))?.replace(/^Account:\s*/i, '');
+  const rest = lines.slice(1).filter(l => !/^Account:/i.test(l));
+  return {
+    title: account ? `${head} · ${account}` : head,
+    // Something has to be said even if an alert is ever only a headline:
+    // a notification with an empty body renders as a blank second line.
+    body: rest.length ? rest.join(' · ') : head,
+  };
+};
 
 /**
  * Send one alert everywhere it should go, and record it either way.
@@ -58,8 +80,7 @@ const deliver = async (
   telegram: { token: string; chatId: string } | null,
 ): Promise<void> => {
   const push = sendPushToUser(userId, {
-    title: 'OnlyFunds',
-    body: plain(html),
+    ...forPhone(html),
     url: '/',
     // One live alert per account and kind on screen at a time. A margin
     // warning repeating every five minutes should replace itself, not
