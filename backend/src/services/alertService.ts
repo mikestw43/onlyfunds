@@ -67,7 +67,7 @@ const deliver = async (
     tag: `${type}:${accountId}`,
   }).catch(err => {
     console.error('[Alert] push failed:', err?.message);
-    return 0;
+    return { sent: 0, failures: [] };
   });
 
   let telegramOk: boolean | null = null;

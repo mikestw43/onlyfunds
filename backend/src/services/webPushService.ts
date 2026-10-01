@@ -20,8 +20,24 @@ import prisma from '../lib/prisma';
 /** Where the keypair lives. Generated once, then never again. */
 const PUB = 'push_vapid_public';
 const PRIV = 'push_vapid_private';
-/** Mailto the push service can complain to, per the VAPID spec. */
-const SUBJECT = process.env.PUSH_CONTACT || 'mailto:admin@onlyfunds.local';
+/**
+ * Who to complain to, signed into every push as the VAPID "sub" claim.
+ *
+ * This is not decoration. RFC 8292 requires a mailto: or https: URI, and
+ * Apple's push service enforces it: anything pointing at a place that
+ * cannot exist is refused with 403 BadJwtToken and the notification never
+ * reaches the iPhone. Google's service does not check, which is the worst
+ * possible combination — it works on every desktop and Android phone you
+ * test with, and silently fails on exactly one platform.
+ *
+ * The first version of this used mailto:admin@onlyfunds.local, and .local
+ * is reserved (RFC 6762) for exactly the same reason localhost and
+ * .invalid are. The site's own address is a real https URI and needs no
+ * configuring.
+ */
+const siteUrl = (process.env.SITE_URL || 'https://onlyfunds.duckdns.org').replace(/\/+$/, '');
+const contact = process.env.PUSH_CONTACT?.trim();
+const SUBJECT = contact && /^(mailto:|https:\/\/)/.test(contact) ? contact : siteUrl;
 
 let keys: { publicKey: string; privateKey: string } | null = null;
 let loading: Promise<{ publicKey: string; privateKey: string }> | null = null;
@@ -84,6 +100,19 @@ export interface PushPayload {
   tag?: string;
 }
 
+/** What became of one send, per device. */
+export interface PushFailure {
+  label: string;
+  /** The push service's own status, when it gave one. */
+  status: number | null;
+  detail: string;
+}
+
+export interface PushResult {
+  sent: number;
+  failures: PushFailure[];
+}
+
 /**
  * Send to every device a person has registered.
  *
@@ -94,22 +123,29 @@ export interface PushPayload {
  * A push service answering 404 or 410 is telling us that subscription is
  * dead — the browser was uninstalled, or cleared its site data. That row is
  * removed, because otherwise it is retried for every alert forever.
+ *
+ * Every other refusal is reported back rather than only logged. One device
+ * failing while others succeed is the failure that hides: the person sees a
+ * notification arrive on their laptop, concludes it works, and never learns
+ * their phone was refused.
  */
-export const sendPushToUser = async (userId: string, payload: PushPayload): Promise<number> => {
+export const sendPushToUser = async (userId: string, payload: PushPayload): Promise<PushResult> => {
   let devices;
   try {
     await loadKeys();
     devices = await prisma.pushDevice.findMany({ where: { userId } });
   } catch (err) {
     console.error('[push] could not load devices:', err);
-    return 0;
+    return { sent: 0, failures: [{ label: 'server', status: null, detail: String((err as Error)?.message || err) }] };
   }
-  if (devices.length === 0) return 0;
+  if (devices.length === 0) return { sent: 0, failures: [] };
 
   const body = JSON.stringify(payload);
   let sent = 0;
+  const failures: PushFailure[] = [];
 
   await Promise.all(devices.map(async d => {
+    const label = d.label || 'device';
     try {
       await webpush.sendNotification(
         { endpoint: d.endpoint, keys: { p256dh: d.p256dh, auth: d.auth } },
@@ -122,17 +158,23 @@ export const sendPushToUser = async (userId: string, payload: PushPayload): Prom
       await prisma.pushDevice.update({ where: { id: d.id }, data: { lastOkAt: new Date() } })
         .catch(() => { /* the count is not worth failing a delivery over */ });
     } catch (err: unknown) {
-      const code = (err as { statusCode?: number })?.statusCode;
+      const e = err as { statusCode?: number; body?: string; message?: string };
+      const code = e?.statusCode ?? null;
       if (code === 404 || code === 410) {
         await prisma.pushDevice.delete({ where: { id: d.id } }).catch(() => {});
         console.log(`[push] dropped a dead subscription for user ${userId}`);
+        failures.push({ label, status: code, detail: 'subscription expired — turn notifications on again' });
       } else {
-        console.error(`[push] send failed (${code ?? 'no status'}):`, (err as Error)?.message);
+        // The push service's own body says far more than the status does:
+        // Apple names the reason ("BadJwtToken") in it.
+        const detail = (e?.body || e?.message || 'unknown').toString().trim().slice(0, 200);
+        console.error(`[push] send to ${label} failed (${code ?? 'no status'}): ${detail}`);
+        failures.push({ label, status: code, detail });
       }
     }
   }));
 
-  return sent;
+  return { sent, failures };
 };
 
 /** True when this person has at least one device listening. */

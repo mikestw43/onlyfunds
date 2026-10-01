@@ -77,14 +77,20 @@ router.post('/unsubscribe', async (req: AuthRequest, res: Response) => {
   res.json({ ok: true });
 });
 
-/** Prove it works, from the settings page, without waiting for a real alert. */
+/**
+ * Prove it works, from the settings page, without waiting for a real alert.
+ *
+ * Reports per device rather than a single count. A test that says "sent to
+ * 1 device" while the phone it was meant for was refused is worse than no
+ * test at all — it is the laptop answering for the phone.
+ */
 router.post('/test', async (req: AuthRequest, res: Response) => {
-  const sent = await sendPushToUser(req.user!.id, {
+  const result = await sendPushToUser(req.user!.id, {
     title: 'OnlyFunds',
     body: 'Push notifications are working on this device.',
     tag: 'push-test',
   });
-  res.json({ sent });
+  res.json(result);
 });
 
 export default router;

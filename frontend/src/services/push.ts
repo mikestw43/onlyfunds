@@ -122,9 +122,26 @@ export const disablePush = async (): Promise<PushState> => {
   return 'off';
 };
 
-export const sendTestPush = async (): Promise<number> => {
-  const { data } = await api.post<{ sent: number }>('/push/test', {});
-  return data.sent;
+export interface PushDevice {
+  id: string;
+  label: string | null;
+  createdAt: string;
+  lastOkAt: string | null;
+}
+
+export const listDevices = async (): Promise<PushDevice[]> => {
+  const { data } = await api.get<{ devices: PushDevice[] }>('/push/devices');
+  return data.devices;
+};
+
+export interface TestResult {
+  sent: number;
+  failures: { label: string; status: number | null; detail: string }[];
+}
+
+export const sendTestPush = async (): Promise<TestResult> => {
+  const { data } = await api.post<TestResult>('/push/test', {});
+  return data;
 };
 
 /**

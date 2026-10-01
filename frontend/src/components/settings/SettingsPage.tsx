@@ -3,8 +3,8 @@ import { useQuery } from '@tanstack/react-query';
 import { useUIStore } from '../../stores/uiStore';
 import { useTranslation } from '../../i18n/useTranslation';
 import {
-  getState as getPushState, enablePush, disablePush, sendTestPush,
-  type PushState,
+  getState as getPushState, enablePush, disablePush, sendTestPush, listDevices,
+  type PushState, type PushDevice,
 } from '../../services/push';
 import { useAuthStore } from '../../stores/authStore';
 import { AiSettings } from './AiSettings';
@@ -242,13 +242,22 @@ const PushCard = () => {
   const addToast = useUIStore(s => s.addToast);
   const [state, setState] = useState<PushState | null>(null);
   const [busy, setBusy] = useState(false);
+  const [devices, setDevices] = useState<PushDevice[]>([]);
+  // What the push service said about each device on the last test. Kept on
+  // screen rather than only in a toast: a refusal that names its reason is
+  // the one thing that turns "it does not work on my phone" into something
+  // anyone can act on, and a toast is gone before it can be read out.
+  const [failures, setFailures] = useState<{ label: string; status: number | null; detail: string }[]>([]);
 
-  useEffect(() => { getPushState().then(setState); }, []);
+  const refreshDevices = () => listDevices().then(setDevices).catch(() => setDevices([]));
+  useEffect(() => { getPushState().then(setState); refreshDevices(); }, []);
 
   const toggle = async () => {
     setBusy(true);
     try {
       setState(state === 'on' ? await disablePush() : await enablePush());
+      setFailures([]);
+      await refreshDevices();
     } catch (err) {
       console.error('[push] toggle failed:', err);
       addToast({ type: 'error', title: t('settings.push_failed') });
@@ -259,10 +268,12 @@ const PushCard = () => {
   const test = async () => {
     setBusy(true);
     try {
-      const sent = await sendTestPush();
-      addToast(sent > 0
-        ? { type: 'success', title: t('settings.push_test_sent').replace('{n}', String(sent)) }
+      const res = await sendTestPush();
+      setFailures(res.failures);
+      addToast(res.sent > 0
+        ? { type: 'success', title: t('settings.push_test_sent').replace('{n}', String(res.sent)) }
         : { type: 'error', title: t('settings.push_test_none') });
+      await refreshDevices();
     } catch { addToast({ type: 'error', title: t('settings.push_failed') }); }
     finally { setBusy(false); }
   };
@@ -297,7 +308,11 @@ const PushCard = () => {
             <button onClick={toggle} disabled={busy} style={state === 'on' ? { ...btnGhost, opacity: busy ? .4 : 1 } : btnPrimary(busy)}>
               {busy ? t('settings.push_working') : state === 'on' ? t('settings.push_disable') : t('settings.push_enable')}
             </button>
-            {state === 'on' && (
+            {/* Offered whenever anything is registered, not only when this
+                browser is. The test goes to every device and now reports
+                each one, so pressing it on a laptop is how you find out
+                what a phone that is not in front of you actually did. */}
+            {devices.length > 0 && (
               <button onClick={test} disabled={busy} style={{ ...btnGhost, opacity: busy ? .4 : 1 }}>
                 {t('settings.push_test')}
               </button>
@@ -307,6 +322,40 @@ const PushCard = () => {
             <p style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-micro)', color: 'var(--text-dim)', marginTop: '10px', lineHeight: 1.6 }}>
               {t('settings.push_android_note')}
             </p>
+          )}
+
+          {/* Every browser that agreed, not just this one. This is what
+              answers "did my phone actually register?" — a device missing
+              from here never subscribed, and one that is here but failed
+              says why. */}
+          {devices.length > 0 && (
+            <div style={{ marginTop: '14px' }}>
+              <div style={{ fontFamily: 'var(--ff-label)', fontSize: 'var(--fs-label)', color: 'var(--text-dim)', letterSpacing: '.5px', marginBottom: '6px' }}>
+                {t('settings.push_devices')}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                {devices.map(d => {
+                  const failed = failures.find(f => f.label === (d.label || 'device'));
+                  return (
+                    <div key={d.id} style={{ background: 'var(--bg-card2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '7px 10px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                        <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-body-sm)', color: 'var(--text)' }}>
+                          {d.label || 'device'}
+                        </span>
+                        <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-micro)', color: failed ? 'var(--danger)' : d.lastOkAt ? 'var(--success)' : 'var(--text-dim)' }}>
+                          {failed ? `✕ ${failed.status ?? ''}` : d.lastOkAt ? `✓ ${new Date(d.lastOkAt).toLocaleString()}` : '—'}
+                        </span>
+                      </div>
+                      {failed && (
+                        <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-micro)', color: 'var(--danger)', marginTop: '3px', wordBreak: 'break-word', lineHeight: 1.5 }}>
+                          {failed.detail}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           )}
         </>
       )}
