@@ -695,6 +695,7 @@
   "draft.sending": "SENDING…",
   "draft.waiting": "WAITING FOR THE EA…",
   "draft.cancelled": "Cancelled. Nothing was sent.",
+  "draft.already_sent": "Already sent. Check the position on the account, or Command history for what the terminal replied.",
   "draft.done": "The EA did it.",
   "draft.refused": "It was refused.",
   "draft.sent_no_answer": "Sent. The EA has not answered yet — check the command history.",

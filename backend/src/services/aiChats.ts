@@ -60,8 +60,27 @@ export const getChat = async (userId: string, chatId: string) => {
       photos: m.photos,
       model: m.model,
       at: m.createdAt,
+      ordersSentAt: m.ordersSentAt,
     })),
   };
+};
+
+/**
+ * Mark the order written out in one message as sent.
+ *
+ * Scoped to the asker's own conversations, and only ever set — an order
+ * that has gone cannot un-go, and the card reads this to show what
+ * happened instead of offering to send it again.
+ */
+export const markOrdersSent = async (userId: string, messageId: string): Promise<boolean> => {
+  const owned = await prisma.aiMessage.findFirst({
+    where: { id: messageId, chat: { userId } },
+    select: { id: true, ordersSentAt: true },
+  });
+  if (!owned) return false;
+  if (owned.ordersSentAt) return true;
+  await prisma.aiMessage.update({ where: { id: messageId }, data: { ordersSentAt: new Date() } });
+  return true;
 };
 
 /** The question and its answer, written together once the answer exists —

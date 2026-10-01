@@ -6,7 +6,7 @@ import { rateLimit } from '../middleware/rateLimit';
 import { buildPortfolioContext } from '../services/aiContext';
 import { askModel, resolveAi, aiDefaultModel, aiBaseFor, listModels, AI_PROVIDERS, type AiTurn, type ResolvedAi } from '../services/aiProvider';
 import { loadAiConfig, saveAiConfig, redacted, configForProvider, savedKeyHints, aiPrices, saveAiPrices } from '../services/aiSettings';
-import { listChats, getChat, saveTurn, deleteChat, truncateFrom } from '../services/aiChats';
+import { listChats, getChat, saveTurn, deleteChat, truncateFrom, markOrdersSent } from '../services/aiChats';
 import { mayAsk, recordAsk } from '../services/aiUsage';
 import { listMemories, addMemory, forgetMemory, memoryText } from '../services/aiMemory';
 import { adminMiddleware } from '../middleware/auth';
@@ -555,6 +555,16 @@ router.get('/chats/:id', async (req: AuthRequest, res: Response) => {
 });
 
 // DELETE /api/ai/chats/:id
+// POST /api/ai/messages/:id/orders-sent — the order in this answer has gone
+router.post('/messages/:id/orders-sent', async (req: AuthRequest, res: Response) => {
+  const ok = await markOrdersSent(req.user!.id, String(req.params.id));
+  if (!ok) {
+    res.status(404).json({ error: 'not_found', message: 'That message is not there.' });
+    return;
+  }
+  res.json({ ok: true });
+});
+
 router.delete('/chats/:id', async (req: AuthRequest, res: Response) => {
   const gone = await deleteChat(req.user!.id, String(req.params.id));
   if (!gone) {

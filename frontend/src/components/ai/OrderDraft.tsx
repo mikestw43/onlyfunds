@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   fetchAccounts, openTrade, closePosition, setPositionSLTP, closeAllOrders, waitForCommand,
-  priceRisk, type RiskSummary,
+  priceRisk, markAiOrdersSent, type RiskSummary,
 } from '../../services/api';
 import { useTranslation } from '../../i18n/useTranslation';
 import type { Account } from '../../types';
@@ -107,10 +107,18 @@ type State = 'idle' | 'sending' | 'done' | 'cancelled';
 
 /** Seconds before an account that trades on its own goes ahead. */
 
-export const OrderDraftCard = ({ plan }: { plan: Plan }) => {
+export const OrderDraftCard = ({ plan, messageId, alreadySent }: {
+  plan: Plan;
+  /** The answer this order was written in, so sending it can be recorded. */
+  messageId?: string;
+  /** It was sent in some earlier session. The card is rebuilt from the
+   *  message text every time the conversation is opened, so without this
+   *  an order already placed came back offering to place itself again. */
+  alreadySent?: boolean;
+}) => {
   const t = useTranslation();
   const [rows, setRows] = useState<Row[]>(plan.rows);
-  const [state, setState] = useState<State>('idle');
+  const [state, setState] = useState<State>(alreadySent ? 'done' : 'idle');
   const [outcomes, setOutcomes] = useState<Outcome[]>([]);
   const [risk, setRisk] = useState<RiskSummary | null>(null);
   const sentOnce = useRef(false);
@@ -215,6 +223,14 @@ export const OrderDraftCard = ({ plan }: { plan: Plan }) => {
       setOutcomes([...results]);
     }
     setState('done');
+    // Written down on the server, not just here: this card is rebuilt
+    // from the message every time the conversation is opened, on any
+    // device, and an armed confirm button under an order that has already
+    // gone is how the same trade gets placed twice.
+    if (messageId) {
+      await markAiOrdersSent(messageId)
+        .catch(err => console.error('[order] could not record the send:', err));
+    }
   };
 
 
@@ -354,6 +370,20 @@ export const OrderDraftCard = ({ plan }: { plan: Plan }) => {
           marginTop: '8px', fontFamily: 'var(--ff-body)', fontSize: '13.5px',
           color: 'var(--danger)', lineHeight: 1.6,
         }}>{t('draft.no_account')}</div>
+      )}
+
+      {/* Sent in an earlier session: there is no outcome to show, because
+          this card was rebuilt from the message rather than from the send.
+          Say so plainly instead of leaving a dead card that looks like it
+          is still waiting for something. */}
+      {alreadySent && outcomes.length === 0 && (
+        <div style={{
+          marginTop: '10px', padding: '9px 10px', borderRadius: 'var(--radius-sm)',
+          background: 'var(--bg-input)',
+          fontFamily: 'var(--ff-body)', fontSize: '14px', lineHeight: 1.6, color: 'var(--text-muted)',
+        }}>
+          ✓ {t('draft.already_sent')}
+        </div>
       )}
 
       {state === 'cancelled' && (

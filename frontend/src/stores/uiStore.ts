@@ -24,6 +24,8 @@ export interface AiMsg {
   images?: string[];
   photos?: number;
   model?: string | null;
+  /** Set once the order written out in this message has been sent. */
+  ordersSentAt?: string | null;
 }
 
 interface UIState {

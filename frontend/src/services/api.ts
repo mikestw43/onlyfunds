@@ -413,6 +413,11 @@ export const fetchPerformanceMetrics = async (
   return res.data;
 };
 
+/** Record that the order written out in this answer has been sent. */
+export const markAiOrdersSent = async (messageId: string): Promise<void> => {
+  await api.post(`/ai/messages/${messageId}/orders-sent`, {});
+};
+
 // --- Announcements ---
 // Notices to everyone, as opposed to notifications, which are about one
 // person's accounts. Kept apart deliberately, all the way to the icon.
@@ -863,6 +868,8 @@ export interface AiChatMessage {
   photos: number;
   model: string | null;
   at: string;
+  /** Set once the order written out in this answer has been sent. */
+  ordersSentAt?: string | null;
 }
 
 export interface RiskRowResult {

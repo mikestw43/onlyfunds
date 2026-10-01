@@ -286,6 +286,59 @@ export const AiSheet = () => {
   const toEnd = (behavior: ScrollBehavior = 'smooth') =>
     endRef.current?.scrollIntoView({ behavior, block: 'end' });
 
+  /**
+   * Hold the view at the end while a loaded conversation finishes drawing.
+   *
+   * One jump is not enough. The messages arrive first and the things
+   * inside them — order cards, which fetch an account list and price the
+   * risk before they have a height — land over the next few hundred
+   * milliseconds, each one growing the list under a view that has already
+   * been positioned. The result was reopening the assistant and finding
+   * yesterday's first message. So it is re-pinned on every frame until the
+   * height stops changing, and never longer than a second.
+   */
+  const settleToEnd = () => {
+    const started = Date.now();
+    let lastHeight = -1;
+    let stable = 0;
+    const pin = () => {
+      const el = scroller.current;
+      // Not mounted yet, or nothing drawn yet. Keep waiting rather than
+      // giving up: the first version checked only that the height had
+      // stopped changing, which is true of a list that has not started
+      // yet, so it stopped after three frames and left the view at the
+      // top — exactly what it was written to prevent.
+      const height = el?.scrollHeight ?? 0;
+      if (el && height > 0) {
+        // Set directly rather than scrollIntoView on the marker at the
+        // bottom: that asks the browser which box to move and it picked a
+        // different one, leaving this scroller sitting at the top with a
+        // conversation three screens tall below it.
+        el.scrollTop = el.scrollHeight;
+        stable = height === lastHeight ? stable + 1 : 0;
+        lastHeight = height;
+      }
+      const settled = stable >= 3 && Date.now() - started > 400;
+      if (!settled && Date.now() - started < 2000) requestAnimationFrame(pin);
+    };
+    requestAnimationFrame(pin);
+  };
+
+  /**
+   * Opening the sheet lands on the newest message.
+   *
+   * It has to hang off the sheet opening rather than the conversation
+   * loading. The sheet is always mounted and the last conversation is
+   * fetched once at start-up, long before anybody taps the button — so
+   * scrolling when the messages arrive scrolls a list that is not on
+   * screen and has no height, which is exactly what it did: the loop ran
+   * for two seconds against a null scroller and gave up, and the sheet
+   * opened at the top of a conversation three screens tall.
+   */
+  useEffect(() => {
+    if (open) settleToEnd();
+  }, [open]);
+
   // Following the conversation should not yank the page out from under
   // someone who has scrolled up to read an earlier answer. It follows when
   // they are at the end, and when the new message is their own.
@@ -422,10 +475,15 @@ export const AiSheet = () => {
         at: new Date(m.at).getTime(),
         photos: m.photos,
         model: m.model,
+        ordersSentAt: m.ordersSentAt,
       })));
       setChatId(chat.id);
       setChats(null);
-      setTimeout(() => toEnd('auto'), 60);
+      // Opening a conversation puts you at its end, where the last thing
+      // said is. Reset the "reading something earlier" flag with it, or
+      // the next message would not follow either.
+      setAwayFromEnd(false);
+      settleToEnd();
     } catch {
       addToast({ type: 'error', title: t('ai.title'), message: t('ai.chat_load_failed') });
     } finally {
@@ -1116,7 +1174,11 @@ export const AiSheet = () => {
                   </div>
                   {plan && (
                     <div style={{ marginTop: '10px' }}>
-                      <OrderDraftCard plan={plan} />
+                      <OrderDraftCard
+                        plan={plan}
+                        messageId={m.id}
+                        alreadySent={Boolean(m.ordersSentAt)}
+                      />
                     </div>
                   )}
                   {offer && <MemoryOffer text={offer} />}

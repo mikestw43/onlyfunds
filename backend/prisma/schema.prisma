@@ -523,14 +523,21 @@ model AiChat {
 /// larger than every other row in this database put together, and their
 /// value is in the answer, which is kept. A message that had one says so.
 model AiMessage {
-  id        String   @id @default(uuid())
-  chatId    String
-  chat      AiChat   @relation(fields: [chatId], references: [id], onDelete: Cascade)
-  role      String // 'user' | 'assistant'
-  text      String
-  photos    Int      @default(0)
-  model     String? // which model answered, for an answer
-  createdAt DateTime @default(now())
+  id           String    @id @default(uuid())
+  chatId       String
+  chat         AiChat    @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  role         String // 'user' | 'assistant'
+  text         String
+  photos       Int       @default(0)
+  model        String? // which model answered, for an answer
+  /// When the order written out in this message was actually sent.
+  ///
+  /// The card is rebuilt from the message text every time the
+  /// conversation is opened, so without this it came back with its
+  /// confirm button armed — an order already placed, offering to place
+  /// itself again, days later and on any device.
+  ordersSentAt DateTime?
+  createdAt    DateTime  @default(now())
 
   @@index([chatId, createdAt])
 }
