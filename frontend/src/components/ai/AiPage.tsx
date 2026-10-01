@@ -97,6 +97,7 @@ export const AiSheet = () => {
   const clearMessages = useUIStore(st => st.clearAiMessages);
   const setMessages = useUIStore(st => st.setAiMessages);
   const truncateFrom = useUIStore(st => st.truncateAiFrom);
+  const markOrderSent = useUIStore(st => st.markAiOrderSent);
   const chatId = useUIStore(st => st.aiChatId);
   const setChatId = useUIStore(st => st.setAiChatId);
   const [draft, setDraft] = useState('');
@@ -1178,6 +1179,7 @@ export const AiSheet = () => {
                         plan={plan}
                         messageId={m.id}
                         alreadySent={Boolean(m.ordersSentAt)}
+                        onSent={() => markOrderSent(m.id)}
                       />
                     </div>
                   )}

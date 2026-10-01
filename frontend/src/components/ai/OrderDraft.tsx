@@ -107,10 +107,12 @@ type State = 'idle' | 'sending' | 'done' | 'cancelled';
 
 /** Seconds before an account that trades on its own goes ahead. */
 
-export const OrderDraftCard = ({ plan, messageId, alreadySent }: {
+export const OrderDraftCard = ({ plan, messageId, alreadySent, onSent }: {
   plan: Plan;
   /** The answer this order was written in, so sending it can be recorded. */
   messageId?: string;
+  /** Tell the conversation on screen, as well as the server. */
+  onSent?: () => void;
   /** It was sent in some earlier session. The card is rebuilt from the
    *  message text every time the conversation is opened, so without this
    *  an order already placed came back offering to place itself again. */
@@ -231,6 +233,10 @@ export const OrderDraftCard = ({ plan, messageId, alreadySent }: {
       await markAiOrdersSent(messageId)
         .catch(err => console.error('[order] could not record the send:', err));
     }
+    // And the copy this session is reading. Within a session the messages
+    // come from the store rather than from the server, so recording it
+    // only there left the button armed until the next reload.
+    onSent?.();
   };
 
 

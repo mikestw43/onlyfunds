@@ -65,6 +65,8 @@ interface UIState {
   /** Drop this message and everything said after it (editing, or asking
    *  again). */
   truncateAiFrom: (id: string) => void;
+  /** The order written out in this answer has been sent. */
+  markAiOrderSent: (id: string) => void;
   /** The conversation on the server these messages belong to. Null until
    *  the first answer comes back with one. */
   aiChatId: string | null;
@@ -112,6 +114,14 @@ export const useUIStore = create<UIState>()(
       })),
       clearAiMessages: () => set({ aiMessages: [], aiChatId: null }),
       setAiMessages: (aiMessages) => set({ aiMessages }),
+      // Kept here as well as on the server. The card is rebuilt from the
+      // message, and within a session the message comes from this store
+      // rather than from a fresh fetch — so telling only the server left
+      // the card armed until the next reload.
+      markAiOrderSent: (id) => set(state => ({
+        aiMessages: state.aiMessages.map(m =>
+          m.id === id ? { ...m, ordersSentAt: new Date().toISOString() } : m),
+      })),
       truncateAiFrom: (id) => set(state => {
         const at = state.aiMessages.findIndex(m => m.id === id);
         return at < 0 ? {} : { aiMessages: state.aiMessages.slice(0, at) };

@@ -501,7 +501,7 @@ const resetHeartbeat = (accountId: string, userId: string): void => {
 export const receiveMT5Ack = async (req: Request, res: Response): Promise<void> => {
   const payload = req.body as {
     apiKey?: string;
-    results?: { id?: string; ok?: boolean; ticket?: number; error?: string }[];
+    results?: { id?: string; ok?: boolean; ticket?: number; error?: string; detail?: string }[];
   };
 
   if (!payload.apiKey) {
@@ -521,10 +521,18 @@ export const receiveMT5Ack = async (req: Request, res: Response): Promise<void> 
   for (const r of results) {
     if (!r || typeof r.id !== 'string') continue;
     const ok = r.ok === true;
+    // What the EA says it did, in preference to what we can guess from
+    // the fact that it did not fail. A market order with a stop opens
+    // first and is protected a moment later, and the second step can be
+    // refused on its own — the order is open, the acknowledgement is a
+    // success, and only this line says the position has no stop on it.
+    // It used to be thrown away whenever ok was true, so every such
+    // trade reported "done".
+    const said = typeof r.detail === 'string' ? r.detail.trim() : '';
     const detail = ok
-      ? (r.ticket ? `ticket ${r.ticket}` : 'done')
-      : (r.error || 'refused, no reason given').slice(0, 300);
-    await settleCommand(r.id, ok, detail);
+      ? (said || (r.ticket ? `ticket ${r.ticket}` : 'done'))
+      : (said || r.error || 'refused, no reason given');
+    await settleCommand(r.id, ok, detail.slice(0, 300));
     settled += 1;
     console.log(`[MT5] ${found.account.name} ${ok ? 'executed' : 'refused'} ${r.id}: ${detail}`);
   }
