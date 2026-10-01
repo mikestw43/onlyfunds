@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import type { EconomicEvent } from '../../types';
-import { fetchEconomicCalendar } from '../../services/api';
+import { lastCalendarMeta, fetchEconomicCalendar } from '../../services/api';
 import { useTranslation } from '../../i18n/useTranslation';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -270,7 +270,9 @@ export const EconomicCalendar = () => {
 
   // Week by default: a filtered TODAY often holds a single row, which is a
   // whole screen spent on one event. ForexFactory opens on the week too.
-  const [viewMode,  setViewMode]  = useState<'today' | 'week'>('week');
+  // Today, not the week. The page is opened to see what is coming in the
+  // next few hours; the whole week is a thing you ask for.
+  const [viewMode,  setViewMode]  = useState<'today' | 'week'>('today');
   // Filters stay folded away — on a phone the expanded panel used to take
   // half the screen before a single event appeared.
   const [showFilters, setShowFilters] = useState(false);
@@ -455,6 +457,20 @@ export const EconomicCalendar = () => {
             {minImpact !== 'all' && ` · ${minImpact === 'medium' ? t('calendar.med') : t('calendar.high')}`}
             {` · ${filtered.length}`}
           </span>
+
+          {/* The two feeds do not carry the same events and the standby one
+              carries fewer, so a list that quietly came from it just looks
+              short for no reason. */}
+          {lastCalendarMeta.source === 'investing' && (
+            <span
+              title={t('calendar.backup_feed_why')}
+              style={{
+                fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-micro)',
+                color: 'var(--warning)', border: '1px solid var(--warning)',
+                borderRadius: '999px', padding: '1px 7px', flexShrink: 0,
+              }}
+            >{t('calendar.backup_feed')}</span>
+          )}
 
           <button
             onClick={() => setShowFilters(v => !v)}

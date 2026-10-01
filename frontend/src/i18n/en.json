@@ -703,5 +703,7 @@
   "ai.cmd_takeprofit_q": "Close every position more than 50 dollars in profit",
   "ai.pick_order": "Pick an order",
   "ai.order_hint": "Type @ to pick an order",
-  "ai.no_orders": "No open positions yet"
+  "ai.no_orders": "No open positions yet",
+  "calendar.backup_feed": "standby feed",
+  "calendar.backup_feed_why": "The main feed did not answer, so this is the standby one, which lists fewer events. Try again shortly."
 }

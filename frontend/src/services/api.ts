@@ -221,8 +221,17 @@ export const fetchEconomicCalendar = async (force = false) => {
     ? '/dashboard/economic-calendar?force=1'
     : '/dashboard/economic-calendar';
   const res = await api.get(url);
+  // Which feed answered, and when. The list is the same shape either way,
+  // and the two feeds do not return the same events — so a page that does
+  // not say which one it is showing cannot explain why it got shorter.
+  lastCalendarMeta = {
+    source: (res.headers?.['x-calendar-source'] as string) ?? '',
+    fetchedAt: (res.headers?.['x-calendar-fetched-at'] as string) ?? '',
+  };
   return res.data;
 };
+
+export let lastCalendarMeta: { source: string; fetchedAt: string } = { source: '', fetchedAt: '' };
 
 export const fetchHeatmapAccounts = async () => {
   const res = await api.get('/dashboard/heatmap/accounts');

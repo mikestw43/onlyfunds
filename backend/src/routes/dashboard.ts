@@ -194,10 +194,30 @@ interface EconomicEvent {
 interface CalendarCache {
   data: EconomicEvent[];
   expiry: number;
+  /** Which upstream actually produced this list. */
+  source: 'forexfactory' | 'investing';
+  fetchedAt: number;
 }
 
 let calendarCache: CalendarCache | null = null;
 const CALENDAR_TTL = 30 * 60 * 1000; // 30 minutes
+
+/**
+ * The soonest a manual refresh may go upstream again.
+ *
+ * The refresh button sends force=1, which skips the cache entirely and
+ * calls both feeds. Pressed three times in a row that is six requests in
+ * a few seconds, and ForexFactory's free feed answers the later ones with
+ * a refusal — at which point the code below quietly falls back to
+ * Investing, whose filtered endpoint returns one page rather than the
+ * week. The result is a visibly shorter list, cached for half an hour,
+ * caused by the act of asking for a fresher one.
+ *
+ * Within this window a force serves the cache instead, so leaning on the
+ * button cannot cost the data.
+ */
+const CALENDAR_MIN_REFRESH = 60 * 1000;
+let lastUpstreamAt = 0;
 
 /** Convert "YYYY/MM/DD HH:mm:ss" (US Eastern Time) → ISO with offset. */
 function etToIso(etDateStr: string): string {
@@ -358,7 +378,7 @@ async function fetchInvestingCom(): Promise<EconomicEvent[]> {
  * If FF is unreachable but Investing succeeds we fall back to Investing's
  * full payload so the page isn't empty.
  */
-async function fetchHybridCalendar(): Promise<EconomicEvent[]> {
+async function fetchHybridCalendar(): Promise<{ events: EconomicEvent[]; source: 'forexfactory' | 'investing' }> {
   const [ffResult, invResult] = await Promise.allSettled([
     fetchForexFactory(),
     fetchInvestingCom(),
@@ -367,7 +387,7 @@ async function fetchHybridCalendar(): Promise<EconomicEvent[]> {
   if (ffResult.status === 'rejected') {
     if (invResult.status === 'fulfilled') {
       console.warn('[Calendar] ForexFactory unavailable, falling back to Investing:', ffResult.reason?.message);
-      return invResult.value;
+      return { events: invResult.value, source: 'investing' };
     }
     throw ffResult.reason;
   }
@@ -405,26 +425,43 @@ async function fetchHybridCalendar(): Promise<EconomicEvent[]> {
   });
 
   console.log(`[Calendar] FF-primary: ff=${ff.length} inv=${inv.length} actual_matched=${actualMatched}`);
-  return merged;
+  return { events: merged, source: 'forexfactory' };
 }
 
 router.get('/economic-calendar', async (req: AuthRequest, res: Response) => {
   // ?force=1 (or fresh=1) bypasses the 30-minute cache so a manual
   // refresh button click actually hits upstream instead of the cached payload.
-  const force = req.query.force === '1' || req.query.fresh === '1';
+  const asked = req.query.force === '1' || req.query.fresh === '1';
+  // A force that lands inside the floor is answered from the cache. The
+  // button still feels like a button; it just cannot punish the feed.
+  const force = asked && Date.now() - lastUpstreamAt > CALENDAR_MIN_REFRESH;
+
+  /** So the page can say where the list came from and how old it is. */
+  const serve = (c: CalendarCache) => {
+    res.set('X-Calendar-Source', c.source);
+    res.set('X-Calendar-Fetched-At', new Date(c.fetchedAt).toISOString());
+    res.set('Access-Control-Expose-Headers', 'X-Calendar-Source, X-Calendar-Fetched-At');
+    return res.json(c.data);
+  };
+
   try {
     if (!force && calendarCache && calendarCache.expiry > Date.now()) {
-      return res.json(calendarCache.data);
+      return serve(calendarCache);
     }
-    const data = await fetchHybridCalendar();
-    calendarCache = { data, expiry: Date.now() + CALENDAR_TTL };
-    res.json(data);
+    if (!force && asked && calendarCache) {
+      console.log('[Calendar] force refused, inside the refresh floor');
+      return serve(calendarCache);
+    }
+    lastUpstreamAt = Date.now();
+    const { events, source } = await fetchHybridCalendar();
+    calendarCache = { data: events, expiry: Date.now() + CALENDAR_TTL, source, fetchedAt: Date.now() };
+    return serve(calendarCache);
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Unknown error';
     console.error('[Calendar] Fetch failed:', msg);
-    if (calendarCache) {
-      return res.json(calendarCache.data);
-    }
+    // Stale is better than blank, but it has to say it is stale — the
+    // headers carry the age, and the page shows it.
+    if (calendarCache) return serve(calendarCache);
     res.status(502).json({ error: `Failed to fetch economic calendar: ${msg}` });
   }
 });
