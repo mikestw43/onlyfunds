@@ -5,8 +5,9 @@ import { useAccountStore } from '../../stores/accountStore';
 import { useAuthStore } from '../../stores/authStore';
 import { useUIStore } from '../../stores/uiStore';
 import { NotificationBell } from './NotificationBell';
+import { AnnounceButton } from './AnnounceButton';
 import {
-  IconUser, IconGear, IconDownload, IconUsers, IconPackage, IconMegaphone, IconPower, IconReport } from '../icons';
+  IconUser, IconGear, IconDownload, IconUsers, IconPackage, IconPower, IconReport } from '../icons';
 import type { IconProps } from '../icons';
 import { fetchMarketQuotes, fetchTickerSymbols } from '../../services/api';
 import type { MarketQuote } from '../../services/api';
@@ -334,6 +335,9 @@ export const Header = () => {
           </div>
 
           {/* Notifications bell */}
+          {/* Notices to everyone, beside alerts about this person's own
+              accounts — one mark each, so neither can hide the other. */}
+          <AnnounceButton />
           <NotificationBell />
 
           {/* Profile button */}
@@ -428,7 +432,6 @@ export const Header = () => {
                     </div>
                     <MenuRow Icon={IconUsers}     label={t('menu.user_management')} onSelect={() => go('admin')} />
                     <MenuRow Icon={IconPackage}   label={t('menu.ea_repository')}   onSelect={() => go('ea-repository')} />
-                    <MenuRow Icon={IconMegaphone} label={t('menu.announce')}        onSelect={() => go('announce')} />
                   </>
                 )}
 

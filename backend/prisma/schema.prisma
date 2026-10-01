@@ -224,6 +224,35 @@ model PushDevice {
   @@index([userId])
 }
 
+/// A notice from whoever runs the dashboard to everyone who uses it.
+///
+/// Not an alert. An alert is about one person's money and is addressed to
+/// them; this is addressed to the room — a release note, a maintenance
+/// window, a broker holiday. They are kept apart all the way through, down
+/// to separate unread counts, so that a note about a new feature can never
+/// bury a margin call.
+///
+/// The page this replaces kept its posts in the browser tab that typed
+/// them: three sample notices written at design time, and anything posted
+/// was gone on leaving the page.
+model Announcement {
+  id         String   @id @default(uuid())
+  title      String
+  body       String
+  /// info | warning | update | maintenance — what colour it reads as.
+  type       String   @default("info")
+  /// Held at the top of the list, above the dated ones.
+  pinned     Boolean  @default(false)
+  /// Who posted it, kept by name so a deleted admin does not erase the
+  /// authorship of a notice everyone has read.
+  authorId   String?
+  authorName String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([createdAt])
+}
+
 model NotificationLog {
   id        String   @id @default(uuid())
   userId    String

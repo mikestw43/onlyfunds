@@ -413,6 +413,38 @@ export const fetchPerformanceMetrics = async (
   return res.data;
 };
 
+// --- Announcements ---
+// Notices to everyone, as opposed to notifications, which are about one
+// person's accounts. Kept apart deliberately, all the way to the icon.
+
+export interface Announcement {
+  id: string;
+  title: string;
+  body: string;
+  type: 'info' | 'warning' | 'update' | 'maintenance';
+  pinned: boolean;
+  authorName: string | null;
+  createdAt: string;
+}
+
+export const fetchAnnouncements = async (): Promise<Announcement[]> => {
+  const res = await api.get<{ announcements: Announcement[] }>('/announcements');
+  return res.data.announcements;
+};
+
+export const postAnnouncement = async (input: {
+  title: string; body: string; type: Announcement['type']; pinned?: boolean;
+}): Promise<Announcement> => (await api.post('/announcements', input)).data;
+
+export const updateAnnouncement = async (
+  id: string,
+  input: Partial<{ title: string; body: string; type: Announcement['type']; pinned: boolean }>,
+): Promise<Announcement> => (await api.patch(`/announcements/${id}`, input)).data;
+
+export const deleteAnnouncement = async (id: string): Promise<void> => {
+  await api.delete(`/announcements/${id}`);
+};
+
 // --- Notifications ---
 
 export const fetchNotifications = async (
