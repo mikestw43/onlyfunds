@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchNotifications } from '../../services/api';
 import type { NotificationLogEntry } from '../../types';
+import { readAlert } from './alertText';
 
 // Format relative time
 const relTime = (iso: string): string => {
@@ -180,12 +181,41 @@ export const NotificationBell = () => {
                         background: log.success ? 'rgba(52,211,153,.06)' : 'rgba(248,113,113,.06)',
                         flexShrink: 0,
                       }}>
-                        {log.type.replace(/_/g, ' ')}
+                        {log.type.replace(/_/g, ' ').toUpperCase()}
                       </span>
                     </div>
-                    <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-body)', color: 'var(--text-primary)', marginBottom: '2px', lineHeight: 1.3 }}>
-                      {log.message}
-                    </div>
+                    {/* The account and the figure that caused it, then the
+                        limit and the supporting number underneath. What is
+                        stored is Telegram's own markup; printing it here
+                        showed the tags. */}
+                    {(() => {
+                      const a = readAlert(log.message);
+                      if (!a.account) {
+                        return (
+                          <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-body)', color: 'var(--text-primary)', lineHeight: 1.35 }}>
+                            {a.plain}
+                          </div>
+                        );
+                      }
+                      return (
+                        <>
+                          <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-body)', color: 'var(--text-primary)', marginBottom: '2px', lineHeight: 1.35 }}>
+                            <strong>{a.account}</strong>
+                            {' — '}{a.label}
+                            {a.value && (
+                              <strong style={{ color: log.success ? 'var(--text-primary)' : 'var(--danger)' }}>
+                                {' '}{a.value}
+                              </strong>
+                            )}
+                          </div>
+                          {a.detail && (
+                            <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-body-sm)', color: 'var(--text-dim)', lineHeight: 1.5 }}>
+                              {a.detail}
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
                     <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-body-sm)', color: 'var(--text-muted)', marginTop: '3px' }}>
                       {relTime(log.sentAt)}
                     </div>

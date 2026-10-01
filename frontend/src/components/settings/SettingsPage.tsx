@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useUIStore } from '../../stores/uiStore';
 import { useTranslation } from '../../i18n/useTranslation';
+import { readAlert } from '../layout/alertText';
 import {
   getState as getPushState, enablePush, disablePush, sendTestPush, listDevices, prepare, diagnostics, syncSubscription, showLocalNotification,
   type PushState, type PushDevice,
@@ -499,7 +500,10 @@ const NotificationsTab = () => {
               </span>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-body-sm)', color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {log.message.replace(/<[^>]+>/g, '').replace(/\[OnlyFunds\]\n?|\[DOI DASH\]\n?|\[SENTINEL\]\n?/, '').slice(0, 120)}
+                  {/* The same reading the bell gives it, rather than a
+                      second half-stripped copy that left the line breaks
+                      and the labels in. */}
+                  {readAlert(log.message).plain.slice(0, 140)}
                 </div>
                 <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-body-sm)', color: 'var(--text-dim)', marginTop: '2px' }}>
                   {new Date(log.sentAt).toLocaleString()}
