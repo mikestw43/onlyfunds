@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../stores/authStore';
 import { useUIStore } from '../../stores/uiStore';
@@ -6,7 +6,6 @@ import {
   fetchAnnouncements, postAnnouncement, updateAnnouncement, deleteAnnouncement,
   type Announcement,
 } from '../../services/api';
-import { markAnnouncementsSeen } from '../layout/announceSeen';
 import { useTranslation } from '../../i18n/useTranslation';
 
 const TYPE_CFG = {
@@ -36,13 +35,10 @@ export const AnnouncePage = () => {
     queryFn: fetchAnnouncements,
   });
 
-  // Opening the page is reading them, so the mark beside the bell clears.
-  // Keyed on the ids actually on screen, so one arriving while the page is
-  // open is marked too, and nothing is marked that was never shown.
-  const shownIds = announcements.map(a => a.id).join(',');
-  useEffect(() => {
-    if (shownIds) markAnnouncementsSeen(shownIds.split(','));
-  }, [shownIds]);
+  // This page does not mark anything read. It is where notices are
+  // written, and the panel in the header is where they are read — so an
+  // admin who posts one sees the mark appear like everybody else, instead
+  // of the act of writing silently counting as having read it.
 
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyForm);
