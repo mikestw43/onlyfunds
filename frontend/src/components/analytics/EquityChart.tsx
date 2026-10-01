@@ -8,7 +8,8 @@ import type { EquitySnapshot } from '../../types';
 type Timeframe = '1D' | '1W' | '1M' | '3M';
 
 interface Props {
-  accountId: string;
+  /** Left out for the whole portfolio rather than one account. */
+  accountId?: string;
 }
 
 const formatDate = (ts: string, tf: Timeframe) => {
@@ -23,7 +24,6 @@ export const EquityChart = ({ accountId }: Props) => {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!accountId) return;
     setLoading(true);
     fetchEquityHistory(accountId, timeframe)
       .then(setData)
@@ -44,7 +44,9 @@ export const EquityChart = ({ accountId }: Props) => {
   return (
     <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border2)', borderRadius: 'var(--radius-sm)', padding: '16px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
-        <span style={{ fontFamily: 'var(--ff-section)', fontSize: 'var(--fs-section)', color: 'var(--text)', letterSpacing: '.5px' }}>EQUITY HISTORY</span>
+        <span style={{ fontFamily: 'var(--ff-section)', fontSize: 'var(--fs-section)', color: 'var(--text)', letterSpacing: '.5px' }}>
+          {accountId ? 'EQUITY HISTORY' : 'EQUITY HISTORY · ALL ACCOUNTS · USD'}
+        </span>
         <div style={{ display: 'flex', gap: '4px' }}>
           {TF_BUTTONS.map(tf => (
             <button key={tf} onClick={() => setTimeframe(tf)} style={tfBtn(timeframe === tf)}>{tf}</button>

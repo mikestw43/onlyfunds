@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import prisma from '../lib/prisma';
-import { getEquityHistory } from '../services/equityService';
+import { getEquityHistory, getPortfolioEquityHistory } from '../services/equityService';
 import { getTradeHistory, getTradedSymbols } from '../services/tradeHistoryService';
 import { getDailyPnL, getPerformanceMetrics } from '../services/analyticsService';
 
@@ -10,6 +10,7 @@ const router = Router();
 router.use(authMiddleware);
 
 // GET /api/analytics/equity/:accountId?timeframe=1D|1W|1M|3M
+// The id "all" is every account the person has, added up.
 router.get('/equity/:accountId', async (req: AuthRequest, res: Response) => {
   const accountId = Array.isArray(req.params.accountId)
     ? req.params.accountId[0]
@@ -20,11 +21,20 @@ router.get('/equity/:accountId', async (req: AuthRequest, res: Response) => {
     res.status(400).json({ error: 'Invalid timeframe. Use 1D, 1W, 1M, or 3M.' });
     return;
   }
+  const tf = timeframe as '1D' | '1W' | '1M' | '3M';
 
-  const snapshots = await getEquityHistory(
-    accountId,
-    timeframe as '1D' | '1W' | '1M' | '3M',
-  );
+  if (accountId === 'all') {
+    res.json(await getPortfolioEquityHistory(req.user!.id, tf));
+    return;
+  }
+
+  const snapshots = await getEquityHistory(req.user!.id, accountId, tf);
+  // Null means it is not theirs. Said as "not found" rather than
+  // "forbidden", which would confirm the id names a real account.
+  if (snapshots === null) {
+    res.status(404).json({ error: 'Account not found' });
+    return;
+  }
   res.json(snapshots);
 });
 

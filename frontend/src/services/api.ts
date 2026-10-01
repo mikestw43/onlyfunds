@@ -349,11 +349,12 @@ export const saveAccountAlerts = async (
 
 // --- Analytics ---
 
+/** No account id means every account the person has, added up in USD. */
 export const fetchEquityHistory = async (
-  accountId: string,
+  accountId: string | undefined,
   timeframe: '1D' | '1W' | '1M' | '3M' = '1M',
 ): Promise<EquitySnapshot[]> => {
-  const res = await api.get(`/analytics/equity/${accountId}`, { params: { timeframe } });
+  const res = await api.get(`/analytics/equity/${accountId || 'all'}`, { params: { timeframe } });
   return res.data;
 };
 

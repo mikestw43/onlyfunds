@@ -229,19 +229,11 @@ export const AnalyticsPage = () => {
           <PerformanceCalendar accountId={selectedAccount || undefined} />
         )}
 
+        {/* Every other tab here answers for the whole portfolio when no
+            account is picked. This one used to be the exception and asked
+            the person to choose, which made All Accounts look broken. */}
         {tab === 'equity' && (
-          selectedAccount ? (
-            <EquityChart accountId={selectedAccount} />
-          ) : (
-            <div style={{ textAlign: 'center', padding: '40px 0' }}>
-              <div style={{ fontFamily: 'var(--ff-section)', fontSize: 'var(--fs-section)', color: 'var(--text-muted)', marginBottom: '8px', letterSpacing: '.5px' }}>
-                SELECT AN ACCOUNT
-              </div>
-              <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-body)', color: 'var(--text-dim)' }}>
-                Choose an account above to view its equity curve
-              </div>
-            </div>
-          )
+          <EquityChart accountId={selectedAccount || undefined} />
         )}
 
         {tab === 'stats' && (
