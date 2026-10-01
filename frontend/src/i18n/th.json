@@ -291,6 +291,7 @@
   "announce.pinned": "ปักหมุด",
   "announce.recent": "ล่าสุด",
   "announce.empty": "ยังไม่มีประกาศ",
+  "announce.clear_all": "ล้างทั้งหมด",
   "announce.del_title": "ลบประกาศ",
   "announce.del_warn": "ลบแล้วเรียกคืนไม่ได้",
   "announce.delete": "ลบ",

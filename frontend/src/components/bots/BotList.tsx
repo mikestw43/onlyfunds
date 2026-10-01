@@ -274,7 +274,7 @@ export const BotList = () => {
             ) : null}
           </div>
         ) : botViewMode === 'table' ? (
-          <BotTable accounts={filtered} todayPnlMap={todayPnlData ?? {}} accent="blue" />
+          <BotTable accounts={filtered} todayPnlMap={todayPnlData ?? {}} />
         ) : (
           <div
             style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', marginTop: '10px' }}
@@ -318,7 +318,7 @@ export const BotList = () => {
           </div>
 
           {botViewMode === 'table' ? (
-            <BotTable accounts={demoAccounts} todayPnlMap={todayPnlData ?? {}} accent="yellow" />
+            <BotTable accounts={demoAccounts} todayPnlMap={todayPnlData ?? {}} />
           ) : (
             <div
               style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}

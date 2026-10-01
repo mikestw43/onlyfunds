@@ -291,6 +291,7 @@
   "announce.pinned": "PINNED",
   "announce.recent": "RECENT",
   "announce.empty": "No announcements yet",
+  "announce.clear_all": "CLEAR ALL",
   "announce.del_title": "DELETE ANNOUNCEMENT",
   "announce.del_warn": "This action cannot be undone.",
   "announce.delete": "DELETE",

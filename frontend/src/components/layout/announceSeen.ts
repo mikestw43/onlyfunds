@@ -48,6 +48,35 @@ export const markAnnouncementsSeen = (ids: string[]): void => {
   window.dispatchEvent(new Event(EVENT));
 };
 
+/**
+ * Notices this reader has cleared out of their own panel.
+ *
+ * Separate from deleting, which is the admin's and removes it for
+ * everybody. Clearing is one person tidying their own list: the notice
+ * stays on the admin page and on everyone else's panel, and anything
+ * posted afterwards still arrives.
+ */
+const CLEARED_KEY = 'announce_cleared_ids';
+
+export const clearedIds = (): Set<string> => {
+  try {
+    const raw = JSON.parse(localStorage.getItem(CLEARED_KEY) || '[]');
+    return new Set(Array.isArray(raw) ? raw.filter(x => typeof x === 'string') : []);
+  } catch {
+    return new Set();
+  }
+};
+
+/** Hide these from this browser's panel, and count them as read with it. */
+export const clearAnnouncements = (ids: string[]): void => {
+  if (ids.length === 0) return;
+  try {
+    const kept = [...clearedIds(), ...ids];
+    localStorage.setItem(CLEARED_KEY, JSON.stringify([...new Set(kept)].slice(-KEEP)));
+  } catch { /* nothing to remember it with */ }
+  markAnnouncementsSeen(ids);
+};
+
 /** Re-read whenever the page marks something, so the count drops without
  *  a reload. */
 export const useSeenIds = (): Set<string> => {
@@ -58,4 +87,15 @@ export const useSeenIds = (): Set<string> => {
     return () => window.removeEventListener(EVENT, onSeen);
   }, []);
   return seen;
+};
+
+/** The same, for what has been cleared away. */
+export const useClearedIds = (): Set<string> => {
+  const [cleared, setCleared] = useState(clearedIds);
+  useEffect(() => {
+    const onSeen = () => setCleared(clearedIds());
+    window.addEventListener(EVENT, onSeen);
+    return () => window.removeEventListener(EVENT, onSeen);
+  }, []);
+  return cleared;
 };

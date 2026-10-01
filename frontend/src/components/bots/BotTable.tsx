@@ -31,8 +31,7 @@ const FlashCell = ({ value, style, children }: { value: number; style?: CSSPrope
 interface Props {
   accounts: Account[];
   todayPnlMap: Record<string, number>;
-  /** Optional accent — yellow for demo section, blue for live. */
-  accent?: 'blue' | 'yellow';
+
 }
 
 /** USC (USD-cents) accounts don't show a $ prefix — the value is raw cents.
@@ -98,8 +97,7 @@ const Money = ({ value, signed = false, currency, noK = false }: {
  * (Broker name has been removed from the table view per UI request — it's
  *  still visible on the card view.)
  */
-export const BotTable = ({ accounts, todayPnlMap, accent = 'blue' }: Props) => {
-  const accentColor = accent === 'yellow' ? 'var(--warning)' : 'var(--accent-blue)';
+export const BotTable = ({ accounts, todayPnlMap }: Props) => {
 
   const thStyle: React.CSSProperties = {
     fontFamily: 'var(--ff-section)',
@@ -125,10 +123,17 @@ export const BotTable = ({ accounts, todayPnlMap, accent = 'blue' }: Props) => {
     <div
       className="bot-table-wrap"
       style={{
+        // The same card the calendar's news list is drawn in. This used to
+        // be a 2px frame in blue for live accounts and yellow for demo —
+        // two saturated rectangles around the longest thing on the page,
+        // repeating a distinction the section heading above each one
+        // already makes in words.
         background: 'var(--bg-card)',
-        border: `2px solid ${accentColor}`,
+        border: '1px solid var(--border-color)',
+        borderRadius: 'var(--radius-card)',
         marginTop: '10px',
         overflowX: 'auto',
+        overflowY: 'hidden',
       }}
     >
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>

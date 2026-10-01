@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { fetchAnnouncements } from '../../services/api';
 import { useTranslation } from '../../i18n/useTranslation';
 import { IconMegaphone } from '../icons';
-import { markAnnouncementsSeen, useSeenIds } from './announceSeen';
+import { markAnnouncementsSeen, clearAnnouncements, useSeenIds, useClearedIds } from './announceSeen';
 
 /**
  * Notices from whoever runs the dashboard, as a panel of their own next to
@@ -43,7 +43,7 @@ export const AnnounceButton = () => {
   const [open, setOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
 
-  const { data = [] } = useQuery({
+  const { data: all = [] } = useQuery({
     queryKey: ['announcements'],
     queryFn: fetchAnnouncements,
     // A notice is not urgent. Often enough that one posted this morning is
@@ -53,6 +53,10 @@ export const AnnounceButton = () => {
   });
 
   const seen = useSeenIds();
+  const cleared = useClearedIds();
+  // What this reader has cleared is gone from their panel and from their
+  // count — but still on the admin page, and still on everyone else's.
+  const data = all.filter(a => !cleared.has(a.id));
   const unread = data.filter(a => !seen.has(a.id)).length;
   // Which ones were new when the panel was opened. Kept separately
   // because marking them read updates `seen` immediately — without this
@@ -119,7 +123,7 @@ export const AnnounceButton = () => {
       </button>
 
       {open && (
-        <div style={{
+        <div className="ann-panel" style={{
           position: 'absolute', top: 'calc(100% + 6px)', right: 0,
           zIndex: 600,
           background: 'var(--bg-card)',
@@ -131,11 +135,22 @@ export const AnnounceButton = () => {
           <div style={{
             padding: '9px 14px',
             borderBottom: '1px solid var(--border-color)',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             flexShrink: 0,
           }}>
             <span style={{ fontFamily: 'var(--ff-section)', fontSize: 'var(--fs-section)', color: 'var(--text-primary)', letterSpacing: '1px' }}>
               {t('announce.title')}
             </span>
+            {data.length > 0 && (
+              <button
+                onClick={() => clearAnnouncements(data.map(a => a.id))}
+                style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-body-sm)', color: 'var(--text-muted)', cursor: 'pointer', background: 'none', border: 'none', padding: 0, transition: 'color .15s' }}
+                onMouseEnter={e => (e.currentTarget.style.color = 'var(--danger)')}
+                onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-muted)')}
+              >
+                {t('announce.clear_all')}
+              </button>
+            )}
           </div>
 
           <div style={{ flex: 1, overflowY: 'auto' }}>
@@ -183,6 +198,21 @@ export const AnnounceButton = () => {
           </div>
         </div>
       )}
+
+      {/* Anchored to the button on a wide screen, where there is room to
+          its left. On a phone 300px from the button's right edge runs off
+          the side of the screen, so it anchors to the screen instead. */}
+      <style>{`
+        @media (max-width: 480px) {
+          .ann-panel {
+            position: fixed !important;
+            left: 8px !important;
+            right: 8px !important;
+            width: auto !important;
+            top: 52px !important;
+          }
+        }
+      `}</style>
     </div>
   );
 };
