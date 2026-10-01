@@ -37,7 +37,12 @@ export const AnnouncePage = () => {
   });
 
   // Opening the page is reading them, so the mark beside the bell clears.
-  useEffect(() => { markAnnouncementsSeen(); }, [announcements.length]);
+  // Keyed on the ids actually on screen, so one arriving while the page is
+  // open is marked too, and nothing is marked that was never shown.
+  const shownIds = announcements.map(a => a.id).join(',');
+  useEffect(() => {
+    if (shownIds) markAnnouncementsSeen(shownIds.split(','));
+  }, [shownIds]);
 
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyForm);

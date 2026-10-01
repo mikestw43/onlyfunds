@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { fetchAnnouncements } from '../../services/api';
 import { useUIStore } from '../../stores/uiStore';
 import { IconMegaphone } from '../icons';
-import { useLastSeen } from './announceSeen';
+import { useSeenIds } from './announceSeen';
 
 /**
  * Unread notices, as their own mark next to the bell.
@@ -31,8 +31,8 @@ export const AnnounceButton = () => {
 
   // Recomputed whenever the page marks them read, so the count clears
   // without a reload.
-  const seen = useLastSeen();
-  const unread = data.filter(a => new Date(a.createdAt).getTime() > seen).length;
+  const seen = useSeenIds();
+  const unread = data.filter(a => !seen.has(a.id)).length;
   const open = page === 'announce';
 
   return (
