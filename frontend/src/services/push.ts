@@ -77,30 +77,81 @@ const deviceLabel = (): string => {
 };
 
 /**
- * Ask for permission and register this device.
+ * Everything subscribing needs, fetched before anybody taps anything.
  *
- * The permission prompt only appears in response to a tap — called on page
- * load the browser refuses it outright and, on some, counts it as a refusal
- * that cannot be asked again. So this is only ever wired to a button.
+ * Apple's requirement, in their own words: "When the user completes the
+ * gesture, call the push subscription method immediately from the
+ * gesture's event handler code." Safari means it. The permission a tap
+ * grants is spent by the first await that yields to the network, and
+ * subscribe() called after that is refused — on iOS only. Chrome does not
+ * enforce it, which is why this passed every test on a laptop and left the
+ * phone unregistered with nothing on screen to say so.
+ *
+ * So the server key and the worker are collected on page load, and the
+ * handler does nothing before subscribe() but read this variable.
+ */
+let ready: { reg: ServiceWorkerRegistration; key: ArrayBuffer } | null = null;
+
+export const prepare = async (): Promise<void> => {
+  if (ready || !supported()) return;
+  // Nobody is logged in yet. This matters more than it looks: a 401 makes
+  // the api client clear the session and reload the page, so asking for the
+  // key from the login screen reloads it, which asks again — the login page
+  // reloading forever. Called again from the settings card once there is a
+  // session.
+  if (!localStorage.getItem('onlyfunds_token')) return;
+  try {
+    const reg = (await navigator.serviceWorker.getRegistration('/')) || (await registerWorker());
+    if (!reg) return;
+    await navigator.serviceWorker.ready;
+    const { data } = await api.get<{ key: string }>('/push/key');
+    ready = { reg, key: toBytes(data.key) };
+  } catch (err) {
+    console.error('[push] could not prepare:', err);
+  }
+};
+
+/**
+ * Register this device. Must be called straight from a tap handler.
+ *
+ * subscribe() raises the permission prompt itself, so there is no separate
+ * requestPermission() call to spend the gesture on. Every check before it
+ * is synchronous for the same reason.
  */
 export const enablePush = async (): Promise<PushState> => {
-  const state = await getState();
-  if (state === 'needs-install' || state === 'unsupported' || state === 'denied') return state;
+  if (!supported()) return isIOS() && !isInstalled() ? 'needs-install' : 'unsupported';
+  if (isIOS() && !isInstalled()) return 'needs-install';
+  if (Notification.permission === 'denied') return 'denied';
 
-  const permission = await Notification.requestPermission();
-  if (permission !== 'granted') return permission === 'denied' ? 'denied' : 'off';
-
-  const reg = (await navigator.serviceWorker.getRegistration('/')) || (await registerWorker());
-  if (!reg) return 'off';
-  await navigator.serviceWorker.ready;
-
-  const { data } = await api.get<{ key: string }>('/push/key');
-  const sub = await reg.pushManager.subscribe({
+  const opts: PushSubscriptionOptionsInit = {
     // Required by every current browser: a push this server cannot be
     // identified as the sender of is not accepted.
     userVisibleOnly: true,
-    applicationServerKey: toBytes(data.key),
-  });
+    applicationServerKey: ready?.key,
+  };
+
+  let sub: PushSubscription;
+  try {
+    if (ready) {
+      // The gesture is still good here — nothing has awaited yet.
+      sub = await ready.reg.pushManager.subscribe(opts);
+    } else {
+      // Page only just opened and the key has not arrived. Slower, and on
+      // iOS it may be refused for the reason above — but refusing to try
+      // is certainly worse, and the second tap will have it ready.
+      await prepare();
+      const late = ready as { reg: ServiceWorkerRegistration; key: ArrayBuffer } | null;
+      if (!late) return 'off';
+      sub = await late.reg.pushManager.subscribe({ ...opts, applicationServerKey: late.key });
+    }
+  } catch (err) {
+    // NotAllowedError is the refusal above, and is also what a declined
+    // prompt throws. Distinguishable only by the permission left behind,
+    // which the prompt may have changed since the check at the top.
+    console.error('[push] subscribe failed:', err);
+    if ((Notification.permission as string) === 'denied') return 'denied';
+    throw err;
+  }
 
   const json = sub.toJSON();
   await api.post('/push/subscribe', {

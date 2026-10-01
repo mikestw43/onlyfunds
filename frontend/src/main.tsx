@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { GoogleOAuthProvider } from '@react-oauth/google';
 import './index.css';
 import App from './App.tsx';
-import { registerWorker, watchForeground } from './services/push';
+import { registerWorker, watchForeground, prepare } from './services/push';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -33,7 +33,12 @@ const app = (
 // anyone subscribe, and it caches nothing, so for someone who never turns
 // alerts on it simply sits there. The badge is cleared on the way in — if
 // an alert arrived overnight, opening the app is reading it.
-registerWorker().then(() => watchForeground());
+registerWorker().then(() => {
+  watchForeground();
+  // Collect the server key now rather than when somebody taps "turn on":
+  // Safari will not subscribe once the tap has waited on the network.
+  prepare();
+});
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

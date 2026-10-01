@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useUIStore } from '../../stores/uiStore';
 import { useTranslation } from '../../i18n/useTranslation';
 import {
-  getState as getPushState, enablePush, disablePush, sendTestPush, listDevices,
+  getState as getPushState, enablePush, disablePush, sendTestPush, listDevices, prepare,
   type PushState, type PushDevice,
 } from '../../services/push';
 import { useAuthStore } from '../../stores/authStore';
@@ -248,18 +248,32 @@ const PushCard = () => {
   // the one thing that turns "it does not work on my phone" into something
   // anyone can act on, and a toast is gone before it can be read out.
   const [failures, setFailures] = useState<{ label: string; status: number | null; detail: string }[]>([]);
+  // What this browser said when it refused to subscribe. Shown rather than
+  // only logged: the phone that fails is rarely the device with a console
+  // attached, and "could not turn on notifications" tells nobody anything.
+  const [enableError, setEnableError] = useState('');
 
   const refreshDevices = () => listDevices().then(setDevices).catch(() => setDevices([]));
-  useEffect(() => { getPushState().then(setState); refreshDevices(); }, []);
+  // prepare() is also called on page load, but it does nothing before
+  // there is a session. This is the call that actually lands, and it has to
+  // finish before anybody can tap: Safari will not subscribe once the tap
+  // has waited on the network.
+  useEffect(() => { prepare(); getPushState().then(setState); refreshDevices(); }, []);
 
   const toggle = async () => {
     setBusy(true);
     try {
-      setState(state === 'on' ? await disablePush() : await enablePush());
+      // Called with no await in front of it on purpose: Safari only allows
+      // subscribing while the tap that asked for it is still current.
+      const next = state === 'on' ? disablePush() : enablePush();
+      setEnableError('');
+      setState(await next);
       setFailures([]);
       await refreshDevices();
     } catch (err) {
       console.error('[push] toggle failed:', err);
+      const e = err as { name?: string; message?: string };
+      setEnableError([e?.name, e?.message].filter(Boolean).join(': ') || String(err));
       addToast({ type: 'error', title: t('settings.push_failed') });
       setState(await getPushState());
     } finally { setBusy(false); }
@@ -318,6 +332,12 @@ const PushCard = () => {
               </button>
             )}
           </div>
+          {enableError && (
+            <p style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-micro)', color: 'var(--danger)', marginTop: '10px', lineHeight: 1.6, wordBreak: 'break-word' }}>
+              {enableError}
+            </p>
+          )}
+
           {state === 'on' && /Android/.test(navigator.userAgent) && (
             <p style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-micro)', color: 'var(--text-dim)', marginTop: '10px', lineHeight: 1.6 }}>
               {t('settings.push_android_note')}
