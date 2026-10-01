@@ -212,7 +212,7 @@ export const PerformanceCalendar = ({ accountId }: Props) => {
   return (
     <div>
       {/* Header: month nav + stats + total */}
-      <div style={hdrStyle}>
+      <div className="pcal-hdr" style={hdrStyle}>
         <div className="pcal-monthnav" style={monthNavStyle}>
           <button
             onClick={() => changeMonth(-1)}
@@ -254,7 +254,7 @@ export const PerformanceCalendar = ({ accountId }: Props) => {
         </div>
 
         {/* Monthly P&L total */}
-        <div style={totalWrap}>
+        <div className="pcal-total" style={totalWrap}>
           <span>MONTHLY P&amp;L</span>
           <span style={{
             fontFamily: 'var(--ff-display)', fontSize: 'var(--fs-disp-sm)', lineHeight: 1,
@@ -417,10 +417,15 @@ export const PerformanceCalendar = ({ accountId }: Props) => {
           pointer-events: none;
           z-index: 0;
         }
-        /* Everything else in the cell sits above the fill. */
-        .pcal-td > *:not(.pcal-fill) { position: relative; z-index: 1; }
+        /* Everything else in the cell sits above the fill.
+           The estimate mark is excluded: it is positioned absolutely in the
+           cell's corner, and a blanket position:relative here would drop
+           it back into the text flow — on its own line under the figure,
+           stretching the row. It gets its own z-index below instead. */
+        .pcal-td > *:not(.pcal-fill):not(.pcal-approx) { position: relative; z-index: 1; }
         .pcal-approx {
           position: absolute;
+          z-index: 1;
           top: 3px; right: 5px;
           font-family: var(--ff-body);
           font-size: 12px; line-height: 1;
@@ -433,6 +438,18 @@ export const PerformanceCalendar = ({ accountId }: Props) => {
           .pcal-monthnav { flex: 0 0 auto !important; justify-content: flex-start !important; }
         }
         @media (max-width: 768px) {
+          /* The header wraps to three rows here, so the three blocks are
+             really three rows and their order is ours to choose. The month
+             total belongs with the month that names it, centred under it,
+             not stranded below the four per-day figures. On a wide screen
+             the header is one row and this does not apply. */
+          .pcal-hdr > .pcal-monthnav { order: 1; }
+          .pcal-hdr > .pcal-total {
+            order: 2;
+            flex: 1 1 100%;
+            justify-content: center;
+          }
+          .pcal-hdr > .perf-stats-row { order: 3; }
           .pcal-approx { top: 2px; right: 3px; font-size: 10px; }
           .pcal-wrap { overflow-x: visible !important; }
           .pcal { min-width: 0 !important; table-layout: fixed !important; }
