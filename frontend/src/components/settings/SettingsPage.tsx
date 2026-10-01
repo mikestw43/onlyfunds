@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useUIStore } from '../../stores/uiStore';
 import { useTranslation } from '../../i18n/useTranslation';
 import {
-  getState as getPushState, enablePush, disablePush, sendTestPush, listDevices, prepare, diagnostics,
+  getState as getPushState, enablePush, disablePush, sendTestPush, listDevices, prepare, diagnostics, syncSubscription,
   type PushState, type PushDevice,
 } from '../../services/push';
 import { useAuthStore } from '../../stores/authStore';
@@ -259,7 +259,13 @@ const PushCard = () => {
   // there is a session. This is the call that actually lands, and it has to
   // finish before anybody can tap: Safari will not subscribe once the tap
   // has waited on the network.
-  useEffect(() => { prepare(); getPushState().then(setState); refreshDevices(); }, []);
+  useEffect(() => {
+    prepare();
+    getPushState().then(setState);
+    // Repairs a device the server has no row for before anybody has to
+    // notice, then lists what the server actually has.
+    syncSubscription().then(refreshDevices);
+  }, []);
   // Re-read after anything that could change it, and once a second later
   // than the first paint so the key fetch has landed.
   useEffect(() => {

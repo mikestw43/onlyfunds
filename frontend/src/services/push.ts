@@ -65,6 +65,57 @@ const toBytes = (base64url: string): ArrayBuffer => {
   return buf;
 };
 
+/**
+ * Has the server been told about the subscription this browser holds?
+ *
+ * null until it has been checked this session.
+ */
+let synced: boolean | null = null;
+
+/** Hand a subscription to the server. Keyed on the endpoint, so repeating
+ *  it is an update, never a second device. */
+const register = async (sub: PushSubscription): Promise<void> => {
+  const json = sub.toJSON();
+  await api.post('/push/subscribe', {
+    endpoint: sub.endpoint,
+    keys: { p256dh: json.keys?.p256dh, auth: json.keys?.auth },
+    label: deviceLabel(),
+  });
+  synced = true;
+};
+
+/**
+ * Make sure the server knows about whatever this browser is holding.
+ *
+ * These two can come apart, and when they do nothing notices. The browser
+ * keeps a push subscription until something explicitly unsubscribes it,
+ * while the server row can be missing for any number of reasons — the
+ * registering request failed after subscribe() succeeded, a half-finished
+ * "turn off" deleted the row but left the browser's subscription, a push
+ * service once answered 410 and the row was pruned. In every case
+ * getSubscription() still returns a subscription, so the card says ON FOR
+ * THIS DEVICE and the button offers to turn it off, while the server has
+ * no address to send to. It is a device that reports itself working and
+ * can never receive anything, and there is no sequence of taps that fixes
+ * it.
+ *
+ * So the browser's subscription is re-registered on every visit to the
+ * settings card. The endpoint is the key, so this is an update for a
+ * device the server already knew and a repair for one it did not.
+ */
+export const syncSubscription = async (): Promise<void> => {
+  if (!supported() || !localStorage.getItem('onlyfunds_token')) return;
+  try {
+    const reg = await navigator.serviceWorker.getRegistration('/');
+    const sub = await reg?.pushManager.getSubscription();
+    if (!sub) { synced = false; return; }
+    await register(sub);
+  } catch (err) {
+    synced = false;
+    console.error('[push] could not sync the subscription:', err);
+  }
+};
+
 /** Something recognisable in the settings list — "iPhone", not a URL. */
 const deviceLabel = (): string => {
   const ua = navigator.userAgent;
@@ -153,12 +204,7 @@ export const enablePush = async (): Promise<PushState> => {
     throw err;
   }
 
-  const json = sub.toJSON();
-  await api.post('/push/subscribe', {
-    endpoint: sub.endpoint,
-    keys: { p256dh: json.keys?.p256dh, auth: json.keys?.auth },
-    label: deviceLabel(),
-  });
+  await register(sub);
   return 'on';
 };
 
@@ -167,9 +213,14 @@ export const disablePush = async (): Promise<PushState> => {
   const reg = await navigator.serviceWorker.getRegistration('/');
   const sub = await reg?.pushManager.getSubscription();
   if (sub) {
-    await api.post('/push/unsubscribe', { endpoint: sub.endpoint }).catch(() => {});
+    // The browser's copy goes first. If the order were the other way and
+    // this failed, the row would be gone while the subscription stayed —
+    // which is the exact split that left a phone reporting itself on and
+    // receiving nothing.
     await sub.unsubscribe().catch(() => {});
+    await api.post('/push/unsubscribe', { endpoint: sub.endpoint }).catch(() => {});
   }
+  synced = false;
   return 'off';
 };
 
@@ -212,6 +263,7 @@ export const diagnostics = async (): Promise<string> => {
   } catch {
     bits.push('worker:ERROR');
   }
+  bits.push(`server-knows:${synced === null ? '?' : synced ? 'yes' : 'NO'}`);
   bits.push(`badge-api:${'setAppBadge' in navigator ? 'yes' : 'no'}`);
   bits.push(`key-ready:${ready ? 'yes' : 'NO'}`);
   return bits.join(' · ');
