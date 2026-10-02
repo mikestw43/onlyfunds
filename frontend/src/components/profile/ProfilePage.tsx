@@ -5,7 +5,7 @@ import { updateProfile, savePreferences, getProfile, linkGoogle, unlinkGoogle } 
 import { useTranslation } from '../../i18n/useTranslation';
 import { ChangePasswordModal } from './ChangePasswordModal';
 import {
-  supported as passkeysSupported, listPasskeys, addPasskey,
+  supported as passkeysSupported, listPasskeys, addPasskey, claimExistingPasskey,
   removePasskey, readPasskeyError, localKeyId, type Passkey,
 } from '../../services/passkeys';
 import { GoogleAuth, googleEnabled } from '../auth/googleAuth';
@@ -106,6 +106,13 @@ const PasskeyRow = () => {
   // On screen rather than only in the console: the phone that fails is
   // rarely the device with a console attached.
   const [error, setError] = useState('');
+  /**
+   * The device says it already has a key this browser does not know
+   * about — registered before the mark existed, or site data cleared
+   * since. The next press uses that key instead of making another, which
+   * is the only way to find out which one it is.
+   */
+  const [claim, setClaim] = useState(false);
 
   const refresh = () => listPasskeys().then(setKeys).catch(() => setKeys([]));
   useEffect(() => {
@@ -124,6 +131,10 @@ const PasskeyRow = () => {
     try {
       if (mine) {
         await removePasskey(mine.id);
+      } else if (claim) {
+        await claimExistingPasskey();
+        setClaim(false);
+        addToast({ type: 'success', title: t('settings.passkey_added') });
       } else {
         await addPasskey();
         addToast({ type: 'success', title: t('settings.passkey_added') });
@@ -132,7 +143,12 @@ const PasskeyRow = () => {
     } catch (err) {
       // Cancelling the Face ID sheet is not a failure and says nothing.
       const message = readPasskeyError(err);
-      if (message) {
+      if (message === 'ALREADY_REGISTERED') {
+        // Not an error so much as a thing to do: ask the device to prove
+        // which key it is holding, and the switch can be told the truth.
+        setClaim(true);
+        setError(t('settings.passkey_claim'));
+      } else if (message) {
         setError(message);
         addToast({ type: 'error', title: t('settings.passkey_failed') });
       }
@@ -189,7 +205,7 @@ const PasskeyRow = () => {
         </div>
 
         {error && (
-          <p style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-micro)', color: 'var(--danger)', marginTop: '8px', lineHeight: 1.6, wordBreak: 'break-word' }}>
+          <p style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-micro)', color: claim ? 'var(--text-dim)' : 'var(--danger)', marginTop: '8px', lineHeight: 1.6, wordBreak: 'break-word' }}>
             {error}
           </p>
         )}

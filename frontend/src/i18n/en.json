@@ -429,6 +429,7 @@
   "settings.tg_test_failed": "Test failed",
   "settings.notif_title": "NOTIFICATIONS",
   "settings.passkey_title": "FACE ID / FINGERPRINT",
+  "settings.passkey_claim": "This device already has a key. Tap again to confirm it with Face ID and finish linking it here.",
   "settings.passkey_this_on": "On for this device",
   "settings.passkey_this_off": "Off",
   "settings.passkey_on": "ON",

@@ -97,6 +97,31 @@ export const addPasskey = async (): Promise<Passkey> => {
 };
 
 /**
+ * Find out which key this device already holds, and note it down.
+ *
+ * Needed because the device can hold a key this browser has forgotten:
+ * registered before the mark existed, or site data cleared since. The
+ * browser then refuses to register a second one ("already registered")
+ * while the sign-in button stays hidden, and no amount of tapping fixes
+ * it.
+ *
+ * The way out is to use the key rather than make one. It is the ordinary
+ * sign-in ceremony, run while already signed in — the device offers the
+ * key it has, the server says which row that is, and the mark is written
+ * back. The token that comes with it is for the same person, so it is
+ * simply ignored.
+ */
+export const claimExistingPasskey = async (): Promise<void> => {
+  const { data } = await api.post('/passkeys/login/options', {});
+  const response = await startAuthentication({ optionsJSON: data.options });
+  const verified = await api.post('/passkeys/login/verify', {
+    response, challengeId: data.challengeId,
+  });
+  const id = (verified.data as { passkeyId?: string }).passkeyId;
+  if (id) mark(id);
+};
+
+/**
  * Sign in. Nothing typed first — the device offers whatever accounts it
  * holds for this site and the person picks one.
  */
@@ -124,6 +149,7 @@ export const readPasskeyError = (err: unknown): string | null => {
   const fromServer = e?.response?.data?.error;
   if (fromServer) return fromServer;
   if (e?.name === 'NotAllowedError' || e?.name === 'AbortError') return null;
-  if (e?.name === 'InvalidStateError') return 'This device is already registered.';
+  // Handled where it happens — the row offers to adopt the key instead.
+  if (e?.name === 'InvalidStateError') return 'ALREADY_REGISTERED';
   return e?.message || 'That did not work.';
 };

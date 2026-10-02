@@ -2116,6 +2116,10 @@ const FAB_SIZE = 52;
 const FAB_EDGE = 16;   // the gap it keeps from the side it rests against
 const FAB_TOP = 64;    // not up under the header
 const FAB_BOTTOM = 76; // not down behind the bottom bar
+/** How far a finger has to travel before it is dragging rather than tapping. */
+const DRAG_START = 12;
+/** And how far a quick press may still have travelled and count as a tap. */
+const TAP_SLOP = 20;
 
 type FabSpot = { x: number; y: number };
 
@@ -2155,7 +2159,7 @@ export const AiFab = ({ onClick, hidden }: { onClick: () => void; hidden?: boole
   const [spot, setSpot] = useState<FabSpot | null>(null);
   const [held, setHeld] = useState(false);
   const btn = useRef<HTMLButtonElement>(null);
-  const grab = useRef<{ id: number; dx: number; dy: number; sx: number; sy: number; moved: boolean } | null>(null);
+  const grab = useRef<{ id: number; dx: number; dy: number; sx: number; sy: number; at: number; moved: boolean } | null>(null);
 
   useEffect(() => {
     const saved = readSpot();
@@ -2182,37 +2186,84 @@ export const AiFab = ({ onClick, hidden }: { onClick: () => void; hidden?: boole
     });
   };
 
+  /**
+   * Where the button is right now, without asking for its rectangle.
+   *
+   * getBoundingClientRect reports the box AFTER transforms, and the
+   * button is scaled by :active the instant a finger lands on it — so
+   * reading it there put the drag's starting point a pixel or two out
+   * and the button visibly jumped under the thumb. The computed right
+   * and bottom are the CSS corner, transform or no transform, and they
+   * resolve the safe-area inset for us.
+   */
+  const corner = (el: HTMLElement): FabSpot => {
+    const css = getComputedStyle(el);
+    const right = parseFloat(css.right) || FAB_EDGE;
+    const bottom = parseFloat(css.bottom) || FAB_BOTTOM;
+    return {
+      x: window.innerWidth - FAB_SIZE - right,
+      y: window.innerHeight - FAB_SIZE - bottom,
+    };
+  };
+
   const down = (e: ReactPointerEvent<HTMLButtonElement>) => {
     const el = btn.current;
     if (!el) return;
-    const box = el.getBoundingClientRect();
+    const at = spot ?? corner(el);
     grab.current = {
       id: e.pointerId,
-      dx: e.clientX - box.left, dy: e.clientY - box.top,
+      dx: e.clientX - at.x, dy: e.clientY - at.y,
       sx: e.clientX, sy: e.clientY,
+      at: Date.now(),
       moved: false,
     };
     // Follows the finger even once it has left the button.
     el.setPointerCapture(e.pointerId);
     // From here it is placed by coordinates rather than by the corner.
-    setSpot({ x: box.left, y: box.top });
+    setSpot(at);
     setHeld(true);
   };
 
   const move = (e: ReactPointerEvent<HTMLButtonElement>) => {
     const g = grab.current;
     if (!g || g.id !== e.pointerId) return;
-    // A thumb never holds perfectly still; under this much it was a tap.
-    if (!g.moved && Math.hypot(e.clientX - g.sx, e.clientY - g.sy) < 6) return;
+    // A thumb never holds still. Six pixels turned out to be inside what
+    // a plain tap reports on a large phone — the button crept, the tap
+    // was read as a drag, and the assistant did not open. Far enough to
+    // be a drag now means a good finger's width.
+    if (!g.moved && Math.hypot(e.clientX - g.sx, e.clientY - g.sy) < DRAG_START) return;
     g.moved = true;
     setSpot(clampSpot({ x: e.clientX - g.dx, y: e.clientY - g.dy }));
   };
+
+  /**
+   * Set when the gesture that just ended was a drag, so the click the
+   * browser sends afterwards can be ignored.
+   */
+  const dragged = useRef(false);
 
   const up = (e: ReactPointerEvent<HTMLButtonElement>) => {
     const g = grab.current;
     if (!g || g.id !== e.pointerId) return;
     grab.current = null;
-    if (!g.moved) { setHeld(false); onClick(); return; }
+    // A quick press that did not travel far is a tap however the pointer
+    // wobbled on the way: someone dragging holds on, and the cost of
+    // getting this wrong is a button that looks broken.
+    const quick = Date.now() - g.at < 300
+      && Math.hypot(e.clientX - g.sx, e.clientY - g.sy) < TAP_SLOP;
+    if (!g.moved || quick) {
+      dragged.current = false;
+      setHeld(false);
+      // Back where it was, in case a few pixels of travel moved it.
+      setSpot(s => (s ? snapSpot(s) : s));
+      // Opening is left to the click that follows. Doing it here opened
+      // the sheet before the browser had finished the tap, and the click
+      // it then sent — at the same spot, a moment later — landed on the
+      // backdrop that had just appeared and shut it again. On a phone
+      // that reads as the screen flickering and nothing happening.
+      return;
+    }
+    dragged.current = true;
     rest();
   };
 
@@ -2220,6 +2271,7 @@ export const AiFab = ({ onClick, hidden }: { onClick: () => void; hidden?: boole
     const g = grab.current;
     if (!g || g.id !== e.pointerId) return;
     grab.current = null;
+    dragged.current = g.moved;
     rest();
   };
 
@@ -2233,9 +2285,14 @@ export const AiFab = ({ onClick, hidden }: { onClick: () => void; hidden?: boole
       onPointerMove={move}
       onPointerUp={up}
       onPointerCancel={cancel}
-      // The pointer handlers open it; this is only for the keyboard, which
-      // reports a click with no detail behind it.
-      onClick={(e) => { if (e.detail === 0) onClick(); }}
+      // Where opening actually happens — for a mouse, for a finger, and
+      // for the keyboard, which sends a click of its own. The pointer
+      // handlers above only move the button, and set `dragged` so the
+      // click at the end of a drag does not also open it.
+      onClick={() => {
+        if (dragged.current) { dragged.current = false; return; }
+        onClick();
+      }}
       aria-label="AI"
       className={`ai-fab${held ? ' ai-fab-held' : ''}`}
       style={spot ? { left: spot.x, top: spot.y, right: 'auto', bottom: 'auto' } : undefined}
@@ -2262,10 +2319,14 @@ export const AiFab = ({ onClick, hidden }: { onClick: () => void; hidden?: boole
           transition: left .22s cubic-bezier(.22,1,.36,1), top .22s cubic-bezier(.22,1,.36,1);
         }
         .ai-fab:active { transform: scale(.94); }
+        /* Held: no transform at all. Scaling it moved the button under
+           the finger that was holding it, and on a tap that read as a
+           flicker — the thing about to be dragged should sit still. */
         .ai-fab-held, .ai-fab-held:active {
           transition: none;
-          transform: scale(1.08);
+          transform: none;
           box-shadow: 0 10px 26px rgba(0,0,0,.55);
+          border-color: rgba(255,255,255,.4);
         }
         /* Wherever the sidebar is not — the sidebar is the only other way
            in. At 767px this left a gap from 768 to 900 with neither: an

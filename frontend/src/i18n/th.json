@@ -429,6 +429,7 @@
   "settings.tg_test_failed": "ส่งทดสอบไม่สำเร็จ",
   "settings.notif_title": "การแจ้งเตือน",
   "settings.passkey_title": "FACE ID / สแกนนิ้ว",
+  "settings.passkey_claim": "เครื่องนี้มีกุญแจอยู่แล้ว แตะอีกครั้งเพื่อยืนยันด้วย Face ID แล้วระบบจะเชื่อมให้",
   "settings.passkey_this_on": "เปิดอยู่บนเครื่องนี้",
   "settings.passkey_this_off": "ปิดอยู่",
   "settings.passkey_on": "เปิดอยู่",
