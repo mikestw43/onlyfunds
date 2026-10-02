@@ -23,13 +23,10 @@ const EA_RELEASES: EaRelease[] = [
       'once you set EnableTrading = true on its chart. Also closes part of a ' +
       'position, and sends the contract figures the assistant needs before ' +
       'it will say anything about lot sizes. Put this one on a demo account ' +
-      'first. Open it in MetaEditor and compile it (F7), then it installs ' +
-      'into MQL5/Experts like any other.',
-    // No .EX5 for this version yet: MetaEditor is the only thing that
-    // compiles MQL5 and it does not run where this is built, so one
-    // appears here when it has been compiled. A button for a file that is
-    // not there would just 404.
+      'first. Take the .EX5 — it is already compiled, and drops straight into ' +
+      'MQL5/Experts. The source is there for anyone who wants to read it.',
     downloads: [
+      { platform: 'MT5', filename: 'OnlyFunds_AI_v1.5.ex5', ext: '.EX5' },
       { platform: 'MT5', filename: 'OnlyFunds_AI_v1.5.mq5', ext: '.MQ5 SOURCE' },
     ],
   },
@@ -41,8 +38,10 @@ const EA_RELEASES: EaRelease[] = [
       'code left out of the build entirely — not switched off: absent. There ' +
       'is no setting to find and nothing the server sends can make it place, ' +
       'change or close an order. This is the one for accounts where real ' +
-      'money is working. Open it in MetaEditor and compile it (F7) first.',
+      'money is working. Take the .EX5; the source is there to be read, and ' +
+      'reading it is how you confirm there is no trading code in it.',
     downloads: [
+      { platform: 'MT5', filename: 'OnlyFunds_Report_v1.5.ex5', ext: '.EX5' },
       { platform: 'MT5', filename: 'OnlyFunds_Report_v1.5.mq5', ext: '.MQ5 SOURCE' },
     ],
   },
