@@ -21,6 +21,7 @@ import aiRouter from './routes/ai';
 import commandsRouter from './routes/commands';
 import pushRouter from './routes/push';
 import announcementsRouter from './routes/announcements';
+import passkeysRouter from './routes/passkeys';
 import { initWebSocket } from './websocket/broadcaster';
 import { runtimeStore } from './services/runtimeStore';
 import { cleanOldSnapshots } from './services/equityService';
@@ -90,6 +91,7 @@ app.use('/api/ai', aiRouter);
 app.use('/api/commands', commandsRouter);
 app.use('/api/push', pushRouter);
 app.use('/api/announcements', announcementsRouter);
+app.use('/api/passkeys', passkeysRouter);
 
 // Build stamp helps verify a deploy actually picked up new code.
 const BUILD_TAG = 'v1.4-vps-sqlite';

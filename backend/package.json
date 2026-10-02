@@ -19,6 +19,7 @@
   "type": "commonjs",
   "dependencies": {
     "@prisma/client": "^6.16.2",
+    "@simplewebauthn/server": "^14.0.3",
     "@types/multer": "^2.2.0",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",

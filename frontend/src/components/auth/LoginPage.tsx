@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { login, googleLogin } from '../../services/api';
+import { signInWithPasskey, readPasskeyError, supported as passkeysSupported } from '../../services/passkeys';
 import { useAuthStore } from '../../stores/authStore';
 import { SignUpPage } from './SignUpPage';
 import { ForgotPasswordPage } from './ForgotPasswordPage';
@@ -48,6 +49,30 @@ export const LoginPage = () => {
   const [showSignUp, setShowSignUp] = useState(false);
   const [showForgot, setShowForgot] = useState(false);
   const { setAuth } = useAuthStore();
+  // Only offered where it can work. A browser without WebAuthn would show
+  // a button that throws the moment it is pressed.
+  const [canPasskey] = useState(() => passkeysSupported());
+  const [passkeyBusy, setPasskeyBusy] = useState(false);
+
+  /**
+   * Nothing is typed first: the device offers whatever accounts it holds
+   * for this site, so this is one tap and a look at the phone.
+   */
+  const handlePasskey = async () => {
+    setError('');
+    setPasskeyBusy(true);
+    try {
+      const { token, user } = await signInWithPasskey();
+      setAuth(token, user);
+    } catch (err) {
+      // Cancelling the sheet is not an error worth printing — the browser
+      // calls it "NotAllowedError", which reads like a refusal by us.
+      const message = readPasskeyError(err);
+      if (message) setError(message);
+    } finally {
+      setPasskeyBusy(false);
+    }
+  };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -246,6 +271,32 @@ export const LoginPage = () => {
           >
             {loading ? t('auth.connecting') : t('auth.login')}
           </button>
+
+          {canPasskey && (
+            <button
+              type="button"
+              onClick={handlePasskey}
+              disabled={loading || passkeyBusy}
+              style={{
+                width: '100%', padding: '11px',
+                background: 'none',
+                color: 'var(--text-primary)',
+                fontFamily: 'var(--ff-section)', fontSize: 'var(--fs-section)',
+                letterSpacing: '1px', border: '1px solid var(--border2)',
+                cursor: loading || passkeyBusy ? 'not-allowed' : 'pointer',
+                marginTop: '8px',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+              }}
+            >
+              {/* A face in a frame: the same idea on a phone that scans a
+                  face and one that reads a finger, without claiming either. */}
+              <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M1.5 5V3a1.5 1.5 0 0 1 1.5-1.5h2M14.5 5V3A1.5 1.5 0 0 0 13 1.5h-2M1.5 11v2A1.5 1.5 0 0 0 3 14.5h2M14.5 11v2a1.5 1.5 0 0 1-1.5 1.5h-2" />
+                <path d="M5.5 6v1M10.5 6v1M8 6v3h-.8M5.5 10.5c.7.7 1.5 1 2.5 1s1.8-.3 2.5-1" />
+              </svg>
+              {passkeyBusy ? t('login.passkey_working') : t('login.passkey')}
+            </button>
+          )}
 
           {googleEnabled && (
             <>

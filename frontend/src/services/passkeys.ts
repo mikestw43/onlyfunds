@@ -1,0 +1,98 @@
+import { startRegistration, startAuthentication, browserSupportsWebAuthn,
+  platformAuthenticatorIsAvailable } from '@simplewebauthn/browser';
+import api from './api';
+import type { AuthUser } from '../types';
+
+/**
+ * Signing in with Face ID, a fingerprint, or whatever unlocks this device.
+ *
+ * The browser does the hard part. We ask the server for a challenge, hand
+ * it to the browser, and the browser deals with the operating system: an
+ * iPhone shows Face ID, an iPhone without it shows Touch ID, an Android
+ * shows its fingerprint reader, a laptop shows Windows Hello — and a face
+ * that will not scan falls back to the device's own passcode. None of
+ * that is decided here, which is why there is no branch for any of it.
+ *
+ * Nothing about the face or the fingerprint reaches this code, let alone
+ * the server. What comes back is a signature.
+ */
+
+export interface Passkey {
+  id: string;
+  label: string | null;
+  createdAt: string;
+  lastUsedAt: string | null;
+}
+
+/** Can this browser do it at all? */
+export const supported = (): boolean => browserSupportsWebAuthn();
+
+/**
+ * Is there a biometric or screen lock built into this device?
+ *
+ * Separate from `supported`, because a desktop browser with no Windows
+ * Hello can still use a phone or a USB key — worth offering, but not worth
+ * leading with "Face ID".
+ */
+export const hasDeviceUnlock = async (): Promise<boolean> => {
+  try {
+    return await platformAuthenticatorIsAvailable();
+  } catch {
+    return false;
+  }
+};
+
+export const listPasskeys = async (): Promise<Passkey[]> =>
+  (await api.get<{ passkeys: Passkey[] }>('/passkeys')).data.passkeys;
+
+export const removePasskey = async (id: string): Promise<void> => {
+  await api.delete(`/passkeys/${id}`);
+};
+
+/**
+ * Register this device, for someone already signed in.
+ *
+ * Unlike the push subscription, this does NOT have to be the first thing
+ * after the tap: the browser prompt is raised by startRegistration itself
+ * and the fetch before it is part of the same gesture as far as Safari is
+ * concerned, because no permission is being granted — the device is being
+ * asked to make a key.
+ */
+export const addPasskey = async (): Promise<Passkey> => {
+  const { data } = await api.post('/passkeys/register/options', {});
+  const response = await startRegistration({ optionsJSON: data.options });
+  const verified = await api.post('/passkeys/register/verify', {
+    response, challengeId: data.challengeId,
+  });
+  return verified.data.passkey as Passkey;
+};
+
+/**
+ * Sign in. Nothing typed first — the device offers whatever accounts it
+ * holds for this site and the person picks one.
+ */
+export const signInWithPasskey = async (): Promise<{ token: string; user: AuthUser }> => {
+  const { data } = await api.post('/passkeys/login/options', {});
+  const response = await startAuthentication({ optionsJSON: data.options });
+  const verified = await api.post('/passkeys/login/verify', {
+    response, challengeId: data.challengeId,
+  });
+  return verified.data as { token: string; user: AuthUser };
+};
+
+/**
+ * What a failed attempt should say.
+ *
+ * The browser's own errors are not for reading: cancelling the Face ID
+ * sheet throws "NotAllowedError: The operation either timed out or was
+ * not allowed", which is neither true nor useful. Cancelling is the
+ * common case and deserves silence.
+ */
+export const readPasskeyError = (err: unknown): string | null => {
+  const e = err as { name?: string; message?: string; response?: { data?: { error?: string } } };
+  const fromServer = e?.response?.data?.error;
+  if (fromServer) return fromServer;
+  if (e?.name === 'NotAllowedError' || e?.name === 'AbortError') return null;
+  if (e?.name === 'InvalidStateError') return 'This device is already registered.';
+  return e?.message || 'That did not work.';
+};

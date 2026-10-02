@@ -4,6 +4,10 @@ import { useUIStore } from '../../stores/uiStore';
 import { updateProfile, savePreferences, getProfile, linkGoogle, unlinkGoogle } from '../../services/api';
 import { useTranslation } from '../../i18n/useTranslation';
 import { ChangePasswordModal } from './ChangePasswordModal';
+import {
+  supported as passkeysSupported, hasDeviceUnlock, listPasskeys, addPasskey,
+  removePasskey, readPasskeyError, type Passkey,
+} from '../../services/passkeys';
 import { GoogleAuth, googleEnabled } from '../auth/googleAuth';
 import { formatDate, formatDateTime } from '../../utils/formatters';
 
@@ -75,6 +79,131 @@ const btnDanger: React.CSSProperties = {
 
 const fmtDate = formatDate;
 const fmtDateTime = formatDateTime;
+
+/**
+ * Signing in with Face ID, a fingerprint, or whatever unlocks the device.
+ *
+ * A row in SECURITY beside the password and the Google link, because that
+ * is what it is: another way in, and one more thing to be able to take
+ * away. One key per device — the key is made by this phone and stays in
+ * it — so somebody with a phone and a laptop registers twice.
+ *
+ * The server keeps only the public half, which checks a signature and
+ * cannot make one. There is nothing here to steal and nothing the person
+ * can be talked into typing somewhere else: the browser will only ever
+ * offer the key back to this exact domain.
+ */
+const PasskeyRow = () => {
+  const t = useTranslation();
+  const addToast = useUIStore(s => s.addToast);
+  const [keys, setKeys] = useState<Passkey[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [biometric, setBiometric] = useState(false);
+  // On screen rather than only in the console: the phone that fails is
+  // rarely the device with a console attached.
+  const [error, setError] = useState('');
+
+  const refresh = () => listPasskeys().then(setKeys).catch(() => setKeys([]));
+  useEffect(() => {
+    if (!passkeysSupported()) { setKeys([]); return; }
+    refresh();
+    hasDeviceUnlock().then(setBiometric);
+  }, []);
+
+  const add = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      await addPasskey();
+      addToast({ type: 'success', title: t('settings.passkey_added') });
+      await refresh();
+    } catch (err) {
+      // Cancelling the Face ID sheet is not a failure and says nothing.
+      const message = readPasskeyError(err);
+      if (message) {
+        setError(message);
+        addToast({ type: 'error', title: t('settings.passkey_failed') });
+      }
+    } finally { setBusy(false); }
+  };
+
+  const remove = async (id: string) => {
+    setBusy(true);
+    try {
+      await removePasskey(id);
+      await refresh();
+    } catch { addToast({ type: 'error', title: t('settings.passkey_failed') }); }
+    finally { setBusy(false); }
+  };
+
+  if (keys === null) return null;
+  const usable = passkeysSupported();
+
+  return (
+    // The row is a two-column grid, so everything below the label has to
+    // be one child or it lands back in the 140px label column.
+    <div style={{ ...rowStyle, borderBottom: '1px dashed var(--border)', alignItems: 'start' }}>
+      <span style={{ ...lblStyle, paddingTop: '10px' }}>{t('settings.passkey_title')}</span>
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' }}>
+          <span style={keys.length > 0 ? { ...valStyle, color: 'var(--green)' } : readOnlyStyle}>
+            {!usable ? t('settings.passkey_unsupported')
+              : keys.length > 0 ? `✓ ${keys.length}`
+              : t('settings.passkey_none')}
+          </span>
+          {usable && (
+            <button
+              style={{ ...btnGhost, opacity: busy ? .5 : 1, cursor: busy ? 'not-allowed' : 'pointer' }}
+              disabled={busy}
+              onClick={add}
+            >
+              {busy ? t('settings.passkey_working') : t('settings.passkey_add')}
+            </button>
+          )}
+        </div>
+
+        {usable && (
+          <p style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-micro)', color: 'var(--text-dim)', marginTop: '8px', lineHeight: 1.6 }}>
+            {biometric ? t('settings.passkey_intro') : t('settings.passkey_intro_nobio')}
+          </p>
+        )}
+        {error && (
+          <p style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-micro)', color: 'var(--danger)', marginTop: '8px', lineHeight: 1.6, wordBreak: 'break-word' }}>
+            {error}
+          </p>
+        )}
+
+        {keys.length > 0 && (
+          <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            {keys.map(k => (
+              <div key={k.id} style={{ background: 'var(--bg-card2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '7px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                <div>
+                  <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-body-sm)', color: 'var(--text)' }}>{k.label || 'Device'}</div>
+                  <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-micro)', color: 'var(--text-dim)' }}>
+                    {k.lastUsedAt
+                      ? t('settings.passkey_last').replace('{when}', new Date(k.lastUsedAt).toLocaleString())
+                      : t('settings.passkey_never')}
+                  </div>
+                </div>
+                <button
+                  onClick={() => remove(k.id)}
+                  disabled={busy}
+                  title={t('settings.passkey_remove')}
+                  style={{ background: 'none', border: 'none', color: 'var(--text-dim)', cursor: busy ? 'not-allowed' : 'pointer', fontSize: '14px', lineHeight: 1, padding: '4px' }}
+                >✕</button>
+              </div>
+            ))}
+            {/* The thing people get wrong about passkeys: the key is in the
+                device, so a device that is gone is a key that is gone. */}
+            <p style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-micro)', color: 'var(--text-dim)', marginTop: '4px', lineHeight: 1.6 }}>
+              {t('settings.passkey_note')}
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
 
 export const ProfilePage = () => {
   const user = useAuthStore(s => s.user);
@@ -380,6 +509,7 @@ export const ProfilePage = () => {
       {/* Security */}
       <div style={card}>
         <div style={cardTitle}>SECURITY</div>
+        <PasskeyRow />
         <div style={{ ...rowStyle, borderBottom: googleEnabled ? '1px dashed var(--border)' : 'none' }}>
           <span style={lblStyle}>PASSWORD</span>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>

@@ -57,6 +57,38 @@ model User {
   auditLogs           AuditLog[]
   pushDevices         PushDevice[]
   announcementReads   AnnouncementRead[]
+  passkeys            Passkey[]
+}
+
+/// A key this person's phone or laptop holds, used to sign in with Face ID,
+/// a fingerprint, or whatever else that device unlocks with.
+///
+/// Only the public half is here. The private half is made by the device, kept
+/// in its secure hardware and never leaves it — so this table is worth
+/// nothing to whoever takes a copy of it, and there is no secret here that a
+/// person can be talked out of.
+model Passkey {
+  id           String    @id @default(uuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// The credential's own id, base64url, as the device issued it.
+  credentialId String    @unique
+  /// The public half, base64url.
+  publicKey    String
+  /// The device's signature counter. A value that fails to move forward can
+  /// mean two things are signing with one key, which is how a cloned
+  /// authenticator shows itself.
+  counter      Int       @default(0)
+  /// "iPhone", so the list in settings reads like something.
+  label        String?
+  /// How the device talks: internal (built into the phone), hybrid (a phone
+  /// signing on behalf of a desktop), usb, nfc. Kept so the browser can be
+  /// told where to look next time.
+  transports   String?
+  createdAt    DateTime  @default(now())
+  lastUsedAt   DateTime?
+
+  @@index([userId])
 }
 
 model AccountGroup {
