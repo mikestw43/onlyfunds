@@ -429,6 +429,8 @@
   "settings.tg_test_failed": "ส่งทดสอบไม่สำเร็จ",
   "settings.notif_title": "การแจ้งเตือน",
   "settings.passkey_title": "FACE ID / สแกนนิ้ว",
+  "settings.passkey_this_on": "เปิดอยู่บนเครื่องนี้",
+  "settings.passkey_this_off": "ปิดอยู่",
   "settings.passkey_on": "เปิดอยู่",
   "settings.passkey_intro": "เข้าสู่ระบบด้วย Face ID, Touch ID หรือสแกนนิ้ว แทนการพิมพ์รหัสผ่าน กุญแจถูกสร้างในเครื่องนี้และไม่เคยออกไปไหน เซิร์ฟเวอร์เก็บแค่ส่วนที่ใช้ตรวจสอบเท่านั้น",
   "settings.passkey_intro_nobio": "เครื่องนี้ไม่มีตัวสแกนในตัว แต่ยังลงทะเบียนกุญแจได้ เวลาเข้าสู่ระบบมันจะให้ใช้มือถือหรือกุญแจ USB แทน",

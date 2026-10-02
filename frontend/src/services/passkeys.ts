@@ -42,11 +42,38 @@ export const hasDeviceUnlock = async (): Promise<boolean> => {
   }
 };
 
+/**
+ * Which key, if any, belongs to THIS browser.
+ *
+ * The server knows every key on the account; it cannot know which of them
+ * the device in front of you is holding — WebAuthn gives a page no way to
+ * ask "do I have one of these?" without putting a prompt on the screen.
+ * So the row id is noted down here when the key is made, and again
+ * whenever one is used to sign in, which also repairs it on a browser
+ * whose storage was cleared.
+ *
+ * Two things read it: the toggle in settings, which is about this device,
+ * and the sign-in button, which should not be offered to somebody who has
+ * never registered anything.
+ */
+const MARK = 'onlyfunds_passkey_id';
+
+export const localKeyId = (): string | null => {
+  try { return localStorage.getItem(MARK); } catch { return null; }
+};
+const mark = (id: string): void => {
+  try { localStorage.setItem(MARK, id); } catch { /* private window */ }
+};
+const unmark = (): void => {
+  try { localStorage.removeItem(MARK); } catch { /* nothing to forget */ }
+};
+
 export const listPasskeys = async (): Promise<Passkey[]> =>
   (await api.get<{ passkeys: Passkey[] }>('/passkeys')).data.passkeys;
 
 export const removePasskey = async (id: string): Promise<void> => {
   await api.delete(`/passkeys/${id}`);
+  if (localKeyId() === id) unmark();
 };
 
 /**
@@ -64,7 +91,9 @@ export const addPasskey = async (): Promise<Passkey> => {
   const verified = await api.post('/passkeys/register/verify', {
     response, challengeId: data.challengeId,
   });
-  return verified.data.passkey as Passkey;
+  const passkey = verified.data.passkey as Passkey;
+  mark(passkey.id);
+  return passkey;
 };
 
 /**
@@ -77,7 +106,9 @@ export const signInWithPasskey = async (): Promise<{ token: string; user: AuthUs
   const verified = await api.post('/passkeys/login/verify', {
     response, challengeId: data.challengeId,
   });
-  return verified.data as { token: string; user: AuthUser };
+  const out = verified.data as { token: string; user: AuthUser; passkeyId?: string };
+  if (out.passkeyId) mark(out.passkeyId);
+  return out;
 };
 
 /**

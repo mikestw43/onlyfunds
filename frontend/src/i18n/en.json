@@ -429,6 +429,8 @@
   "settings.tg_test_failed": "Test failed",
   "settings.notif_title": "NOTIFICATIONS",
   "settings.passkey_title": "FACE ID / FINGERPRINT",
+  "settings.passkey_this_on": "On for this device",
+  "settings.passkey_this_off": "Off",
   "settings.passkey_on": "ON",
   "settings.passkey_intro": "Sign in with Face ID, Touch ID or your fingerprint instead of typing a password. The key is made by this device and never leaves it — the server only ever holds the half that checks a signature.",
   "settings.passkey_intro_nobio": "This device has no built-in scanner, but it can still register a key — your phone or a security key will be offered when you sign in.",

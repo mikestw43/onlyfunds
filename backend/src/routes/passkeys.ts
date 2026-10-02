@@ -323,6 +323,9 @@ router.post('/login/verify', loginLimiter, async (req: Request, res: Response) =
   logAudit(user.id, 'login_passkey', 'user', user.id);
   res.json({
     token,
+    // Which key signed, so the browser can note that it holds one. It is
+    // how the sign-in button knows to appear at all next time.
+    passkeyId: stored.id,
     user: {
       id: updated.id, email: updated.email, role: updated.role,
       name: updated.name, displayName: updated.displayName,

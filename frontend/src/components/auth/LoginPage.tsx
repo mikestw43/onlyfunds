@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { login, googleLogin } from '../../services/api';
-import { signInWithPasskey, readPasskeyError, supported as passkeysSupported } from '../../services/passkeys';
+import { signInWithPasskey, readPasskeyError, supported as passkeysSupported, localKeyId } from '../../services/passkeys';
 import { useAuthStore } from '../../stores/authStore';
 import { SignUpPage } from './SignUpPage';
 import { ForgotPasswordPage } from './ForgotPasswordPage';
@@ -49,9 +49,16 @@ export const LoginPage = () => {
   const [showSignUp, setShowSignUp] = useState(false);
   const [showForgot, setShowForgot] = useState(false);
   const { setAuth } = useAuthStore();
-  // Only offered where it can work. A browser without WebAuthn would show
-  // a button that throws the moment it is pressed.
-  const [canPasskey] = useState(() => passkeysSupported());
+  /**
+   * Only shown to a browser that has actually registered a key.
+   *
+   * Offering it to everybody was wrong in both directions: somebody who
+   * has never been here is invited to sign in with a face the site has
+   * never seen, and somebody arriving to create an account is asked a
+   * question about a feature they have not met. A browser that has one
+   * knows it has one; everyone else gets the form and nothing else.
+   */
+  const [canPasskey] = useState(() => passkeysSupported() && Boolean(localKeyId()));
   const [passkeyBusy, setPasskeyBusy] = useState(false);
 
   /**
