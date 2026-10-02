@@ -267,15 +267,15 @@ const AlertThresholdsDialog = ({ account, onClose }: { account: Account; onClose
           <NumField label={t('acc.alert_eq')} value={form.alertEquityBelow} onChange={v => setForm(p => ({ ...p, alertEquityBelow: v }))} onClear={() => setForm(p => ({ ...p, alertEquityBelow: null }))} placeholder="e.g. 4500" unit="$" />
           <NumField label={t('acc.alert_ml')} value={form.alertMarginLevel} onChange={v => setForm(p => ({ ...p, alertMarginLevel: v }))} onClear={() => setForm(p => ({ ...p, alertMarginLevel: null }))} placeholder="e.g. 200" unit="%" />
 
-          {/* Not a threshold — a cap on how often any of the three above
-              may speak. Blank is not "off" here, so it keeps its own
-              default rather than clearing. */}
+          {/* Not a threshold — how often any of the three above repeats
+              while it stays over its line. Blank is not "off" here, so it
+              falls back to the default rather than to nothing. */}
           <div>
             <NumField
               label={t('acc.alert_repeat')}
               value={form.alertRepeatMins}
-              onChange={v => setForm(p => ({ ...p, alertRepeatMins: v ?? 0 }))}
-              onClear={() => setForm(p => ({ ...p, alertRepeatMins: 0 }))}
+              onChange={v => setForm(p => ({ ...p, alertRepeatMins: v ?? 30 }))}
+              onClear={() => setForm(p => ({ ...p, alertRepeatMins: 30 }))}
               placeholder="30"
               unit={t('acc.alert_mins')}
             />

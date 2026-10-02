@@ -11,49 +11,44 @@ type AlertType = 'drawdown' | 'equity' | 'margin' | 'offline';
 /**
  * Deciding whether an alert should actually be sent.
  *
- * The old rule was a five minute cooldown and nothing else, which gets
- * both halves wrong. An account parked over its threshold alerted every
- * five minutes for as long as it stayed there — two hundred and eighty
- * times a day saying the same thing — and a figure wobbling across the
- * line alerted on every crossing. The cooldown also lived in memory, and
- * this redeploys itself every five minutes, so each deploy wiped it.
+ * One rule, because the person watching has to be able to predict it: a
+ * reading past its line is announced every alertRepeatMins for as long as
+ * it stays past it. 80% with a 30 minute setting means a reminder on the
+ * half hour until the drawdown comes down, and nothing once it has.
  *
- * Three rules now, in order:
+ * What was here before was cleverer and worse. It alerted on the crossing
+ * only, re-armed on recovery past a margin, and spoke up again on a large
+ * jump — which reads well in a comment and leaves someone staring at a
+ * silent phone while an account sits at 80% all day, unable to say whether
+ * that silence means "still bad" or "nothing is arriving". Ten reminders
+ * are cheaper than one alert that never comes.
  *
- *   1. Alert when it crosses the line, not while it sits past it.
- *   2. It is only "recovered", and so able to alert again, once it comes
- *      back a clear margin the right side of the threshold. A drawdown
- *      limit of 80% re-arms below 75%, so 79.8 → 80.2 → 79.9 → 80.1 is
- *      one alert, not four.
- *   3. If it gets markedly worse while already alerting, that is news
- *      rather than a repeat, so it speaks up again — 80% becoming 95% is
- *      not something to stay quiet about.
- *   4. All of the above is remembered against the threshold in force at
- *      the time. Move the threshold and the memory is void: whatever was
- *      announced about the old line says nothing about the new one.
+ * The interval is the whole of the throttle, which is what makes a figure
+ * flickering across the line harmless: 79.9 → 80.1 → 79.9 → 80.1 inside
+ * half an hour is one alert, because the clock keeps running while it is
+ * back under.
  *
- * Over all of it sits the account's own floor: however many of the above
- * are satisfied, nothing is sent within alertRepeatMins of the last one.
+ * Two things sit on top:
+ *
+ *   - A reading that has got markedly worse does not wait out the
+ *     interval. 80% becoming 95% inside the half hour is news, not a
+ *     repeat.
+ *   - Moving a threshold restarts the clock, so a line changed just after
+ *     an alert is answered now rather than up to alertRepeatMins later.
+ *
+ * The state is in the database, not in memory, because this redeploys
+ * itself every five minutes and an in-memory cooldown was wiped by every
+ * deploy.
  */
 
-/** How far back past the threshold counts as recovered, per kind. */
-const recovered = (type: AlertType, value: number, threshold: number): boolean => {
+/** Enough of a change to be worth saying before the floor is up. */
+const materiallyWorse = (type: AlertType, value: number, since: number): boolean => {
   switch (type) {
     // Drawdown and margin level are percentages, so a flat margin reads
     // the same at every size.
-    case 'drawdown': return value < threshold - 5;
-    case 'margin':   return value > threshold * 1.1;
-    // Money, where a flat figure would mean nothing across accounts.
-    case 'equity':   return value > threshold * 1.02;
-    default:         return true;
-  }
-};
-
-/** Enough of a change to be worth saying again while already alerting. */
-const materiallyWorse = (type: AlertType, value: number, since: number): boolean => {
-  switch (type) {
     case 'drawdown': return value >= since + 10;
     case 'margin':   return value <= since * 0.8;
+    // Money, where a flat figure would mean nothing across accounts.
     case 'equity':   return value <= since * 0.9;
     default:         return false;
   }
@@ -86,22 +81,12 @@ const shouldSend = async (
     return { send: breached };
   }
 
-  // Is this still the same rule the state was recorded against? Moving a
-  // threshold throws away everything remembered about the old one. A
-  // drawdown sitting at 80.3% was announced against a limit of 50% and
-  // latched as "already said"; raise the limit to 80% and that latch would
-  // swallow the first breach of the new line — the alert the person moved
-  // the line in order to get. A row written before this column existed
-  // records no rule, and is treated the same way: one alert too many beats
-  // a latch nobody can see.
-  const sameRule = state?.threshold != null && Math.abs(state.threshold - threshold) < 1e-9;
-
   if (!breached) {
-    // Stand down once it is properly clear, not the moment it dips back
-    // under the line — and immediately if the line it was measured against
-    // is gone. Either way the stored rule is brought up to date, so the
-    // next breach is judged against what is set now.
-    if (state && (!sameRule || (state.firing && recovered(type, value, threshold)))) {
+    // Back the right side of the line: stop. When the last alert went out
+    // is deliberately kept — a figure flickering across the line is the
+    // one thing that must not be able to alert on every flicker, and the
+    // interval is now the only thing holding it back.
+    if (state?.firing) {
       await prisma.alertState.update({
         where: { accountId_type: { accountId, type } },
         data: { firing: false, threshold },
@@ -110,19 +95,23 @@ const shouldSend = async (
     return { send: false };
   }
 
-  // The floor holds across a threshold change: changing a line is
-  // deliberate, so it re-arms the alert, but it must not be a way to make
-  // the phone buzz faster than the account's own limit allows.
-  const floorMs = Math.max(0, repeatMins) * 60 * 1000;
-  const tooSoon = state?.lastFiredAt != null && Date.now() - state.lastFiredAt.getTime() < floorMs;
+  // Never faster than once a minute, whatever the box says. A reading
+  // arrives every few seconds, so a floor of zero is not "no limit", it is
+  // a phone that never stops.
+  const floorMs = Math.max(1, repeatMins) * 60 * 1000;
+  const waited = state?.lastFiredAt == null
+    || Date.now() - state.lastFiredAt.getTime() >= floorMs;
 
-  // Already announced under this same rule, and no worse than when it was:
-  // nothing to say.
-  const latched = Boolean(state?.firing) && sameRule;
-  const worse = latched && state?.lastValue != null
+  // A line that has been moved since the last alert is a new question, so
+  // it is answered without waiting. A row written before the threshold was
+  // recorded counts as moved: better one alert early than a silent wait.
+  const ruleMoved = state != null
+    && (state.threshold == null || Math.abs(state.threshold - threshold) > 1e-9);
+
+  const jumped = state?.firing && state.lastValue != null
     && materiallyWorse(type, value, state.lastValue);
-  if (latched && !worse) return { send: false };
-  if (tooSoon) return { send: false };
+
+  if (!waited && !ruleMoved && !jumped) return { send: false };
 
   await prisma.alertState.upsert({
     where: { accountId_type: { accountId, type } },

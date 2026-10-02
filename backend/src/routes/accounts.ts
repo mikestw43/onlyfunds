@@ -583,11 +583,14 @@ router.patch('/:id/alerts', async (req: AuthRequest, res: Response) => {
       ...(alertEquityBelow !== undefined && { alertEquityBelow }),
       ...(alertMarginLevel !== undefined && { alertMarginLevel }),
       ...(alertOffline !== undefined && { alertOffline }),
-      // Minutes, never negative, and capped at a day — a floor longer
-      // than that is indistinguishable from switching the alert off,
-      // which the blank threshold above already does properly.
+      // Minutes between reminders while a reading stays over its line.
+      // At least one: a reading arrives every few seconds, so zero would
+      // be a phone that never stops rather than "no limit". Capped at a
+      // day — longer than that is indistinguishable from switching the
+      // alert off, which clearing the threshold above already does
+      // properly.
       ...(alertRepeatMins !== undefined && {
-        alertRepeatMins: Math.min(1440, Math.max(0, Math.round(Number(alertRepeatMins) || 0))),
+        alertRepeatMins: Math.min(1440, Math.max(1, Math.round(Number(alertRepeatMins) || 30))),
       }),
     },
     select: {

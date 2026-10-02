@@ -159,16 +159,15 @@ model AlertState {
   account     Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
   /// drawdown | equity | margin | offline
   type        String
-  /// True while the condition is over the line and has been announced.
-  /// Cleared only when it recovers past the margin, which is what stops a
-  /// figure wobbling across the threshold from alerting on every wobble.
+  /// True while the condition is over the line. Cleared when it comes back,
+  /// which also clears lastFiredAt so the next crossing is announced at
+  /// once rather than waiting out the repeat interval.
   firing      Boolean   @default(false)
   /// The reading when it last alerted, so a condition that gets markedly
-  /// worse can speak up instead of staying silent behind `firing`.
+  /// worse can speak up without waiting out the repeat interval.
   lastValue   Float?
-  /// The line this state was recorded against. Moving a threshold makes
-  /// everything remembered about the old one meaningless, so a state whose
-  /// rule no longer matches is not allowed to keep an alert quiet.
+  /// The line it was judged against. A threshold moved since the last alert
+  /// is a new question, and gets answered now rather than on the next tick.
   threshold   Float?
   lastFiredAt DateTime?
   updatedAt   DateTime  @updatedAt
