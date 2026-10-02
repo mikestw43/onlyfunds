@@ -432,9 +432,41 @@ export interface Announcement {
   createdAt: string;
 }
 
-export const fetchAnnouncements = async (): Promise<Announcement[]> => {
-  const res = await api.get<{ announcements: Announcement[] }>('/announcements');
-  return res.data.announcements;
+/**
+ * The notices, with what this person has already been shown and what they
+ * have tidied away.
+ *
+ * Both lists used to live in the browser's own storage, so "read" meant
+ * "read on this device" and the same notice still carried a mark on the
+ * phone after being read at the desk. They come from the server now, and
+ * in the same call as the notices so the panel never draws itself from
+ * two halves that disagree.
+ */
+export interface AnnouncementFeed {
+  announcements: Announcement[];
+  seen: string[];
+  cleared: string[];
+}
+
+export const fetchAnnouncements = async (): Promise<AnnouncementFeed> => {
+  const res = await api.get<AnnouncementFeed>('/announcements');
+  return {
+    announcements: res.data.announcements ?? [],
+    seen: res.data.seen ?? [],
+    cleared: res.data.cleared ?? [],
+  };
+};
+
+/** Shown to this reader. Idempotent, so it can be sent on every open. */
+export const markAnnouncementsSeen = async (ids: string[]): Promise<void> => {
+  if (ids.length === 0) return;
+  await api.post('/announcements/seen', { ids });
+};
+
+/** Out of this reader's own panel — not deleted, which is the admin's. */
+export const clearAnnouncementsForMe = async (ids: string[]): Promise<void> => {
+  if (ids.length === 0) return;
+  await api.post('/announcements/clear', { ids });
 };
 
 export const postAnnouncement = async (input: {
@@ -458,6 +490,16 @@ export const fetchNotifications = async (
 ): Promise<NotificationResponse> => {
   const res = await api.get('/notifications', { params: { page, limit } });
   return res.data;
+};
+
+/**
+ * Everything in the bell up to now has been read.
+ *
+ * `at` is only for the one-time hand-over of the mark each browser used
+ * to keep for itself; the server will not take it past its own now.
+ */
+export const markNotificationsSeen = async (at?: string): Promise<void> => {
+  await api.post('/notifications/seen', at ? { at } : {});
 };
 
 // --- Groups ---

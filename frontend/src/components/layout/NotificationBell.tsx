@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { fetchNotifications } from '../../services/api';
+import { fetchNotifications, markNotificationsSeen } from '../../services/api';
 import type { NotificationLogEntry } from '../../types';
 import { readAlert } from './alertText';
 
@@ -16,14 +16,32 @@ const relTime = (iso: string): string => {
   return `${days}d ago`;
 };
 
-// Persistent "last seen" so badge resets on open
+/**
+ * How far this person has read used to be a timestamp in each browser's
+ * own storage, compared against the browser's own clock. Two problems in
+ * one line: reading an alert on the phone left the number up at the desk,
+ * and a server a few seconds ahead stamped alerts into the future, so the
+ * number would not go down at all. The mark lives on the server now, on
+ * one clock, and this is only the one-time hand-over of what a browser
+ * still remembers.
+ */
 const LS_KEY = 'noti_last_seen';
-const getLastSeen = (): number => parseInt(localStorage.getItem(LS_KEY) || '0', 10);
-const setLastSeen = ()  => localStorage.setItem(LS_KEY, Date.now().toString());
+const handOverLastSeen = async (): Promise<boolean> => {
+  let stored: string | null = null;
+  try {
+    stored = localStorage.getItem(LS_KEY);
+  } catch { return false; }
+  if (!stored) return false;
+  const at = parseInt(stored, 10);
+  try {
+    if (at > 0) await markNotificationsSeen(new Date(at).toISOString());
+  } catch { return false; }
+  try { localStorage.removeItem(LS_KEY); } catch { /* it has served its purpose */ }
+  return at > 0;
+};
 
 export const NotificationBell = () => {
   const [open, setOpen]           = useState(false);
-  const [lastSeen, setLastSeenSt] = useState(getLastSeen);
   const panelRef                  = useRef<HTMLDivElement>(null);
   const queryClient               = useQueryClient();
 
@@ -36,26 +54,34 @@ export const NotificationBell = () => {
   });
 
   const logs: NotificationLogEntry[] = data?.logs ?? [];
+  const unreadCount = data?.unread ?? 0;
+  const seenAt = data?.seenAt ? new Date(data.seenAt).getTime() : 0;
 
-  // Count unread = logs newer than lastSeen
-  const unreadCount = logs.filter(l => new Date(l.sentAt).getTime() > lastSeen).length;
+  const refresh = useCallback(
+    () => { void queryClient.invalidateQueries({ queryKey: ['notifications-bell'] }); },
+    [queryClient],
+  );
+
+  /** Everything up to now is read — on the server, so every device agrees. */
+  const markRead = useCallback(() => {
+    // Drop the number immediately; the refetch confirms it.
+    queryClient.setQueryData(['notifications-bell'], (prev: typeof data) =>
+      prev && { ...prev, unread: 0, seenAt: new Date().toISOString() });
+    markNotificationsSeen().catch(() => { /* the next open tries again */ }).then(refresh);
+  }, [queryClient, refresh]);
+
+  useEffect(() => { void handOverLastSeen().then(sent => { if (sent) refresh(); }); }, [refresh]);
 
   const handleToggle = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     setOpen(o => {
-      if (!o) {
-        // opening — mark all as read
-        setLastSeen();
-        setLastSeenSt(Date.now());
-      }
+      if (!o) markRead();
       return !o;
     });
-  }, []);
+  }, [markRead]);
 
   const handleClear = () => {
-    // No backend clear; just mark all as seen and close
-    setLastSeen();
-    setLastSeenSt(Date.now());
+    markRead();
     setOpen(false);
   };
 
@@ -73,8 +99,8 @@ export const NotificationBell = () => {
 
   // Refetch when opened
   useEffect(() => {
-    if (open) queryClient.invalidateQueries({ queryKey: ['notifications-bell'] });
-  }, [open, queryClient]);
+    if (open) refresh();
+  }, [open, refresh]);
 
   return (
     <div style={{ position: 'relative' }} ref={panelRef}>
@@ -157,7 +183,7 @@ export const NotificationBell = () => {
               </div>
             ) : (
               logs.map(log => {
-                const isUnread = new Date(log.sentAt).getTime() > lastSeen;
+                const isUnread = new Date(log.sentAt).getTime() > seenAt;
                 return (
                   <div
                     key={log.id}

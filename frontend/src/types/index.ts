@@ -274,6 +274,10 @@ export interface NotificationResponse {
   total: number;
   page: number;
   limit: number;
+  /** Worked out on the server, so the count means the same on every device. */
+  unread: number;
+  /** How far this person has read, on the server's clock. */
+  seenAt: string | null;
 }
 
 // --- Report / Protection / Audit / Preferences ---

@@ -24,13 +24,89 @@ const adminOnly = (req: AuthRequest, res: Response): boolean => {
   return true;
 };
 
-/** Everything, pinned first, newest first within each. */
-router.get('/', async (_req: AuthRequest, res: Response) => {
-  const announcements = await prisma.announcement.findMany({
-    orderBy: [{ pinned: 'desc' }, { createdAt: 'desc' }],
-    take: 100,
+/**
+ * Everything, pinned first, newest first within each, plus what this
+ * reader has already been shown and what they have tidied away.
+ *
+ * The two lists used to live in the browser's own storage, which made
+ * "read" mean "read on this device": the same notice carried a mark on
+ * the phone after being read on the desktop. They are per person now, and
+ * come back with the notices so the panel can draw itself from one call.
+ */
+router.get('/', async (req: AuthRequest, res: Response) => {
+  const [announcements, reads] = await Promise.all([
+    prisma.announcement.findMany({
+      orderBy: [{ pinned: 'desc' }, { createdAt: 'desc' }],
+      take: 100,
+    }),
+    prisma.announcementRead.findMany({
+      where: { userId: req.user!.id },
+      select: { announcementId: true, cleared: true },
+    }),
+  ]);
+  res.json({
+    announcements,
+    seen: reads.map(r => r.announcementId),
+    cleared: reads.filter(r => r.cleared).map(r => r.announcementId),
   });
-  res.json({ announcements });
+});
+
+/** The ids in a {ids: [...]} body, sane and deduplicated. */
+const idsFrom = (body: unknown): string[] => {
+  const raw = (body as { ids?: unknown })?.ids;
+  if (!Array.isArray(raw)) return [];
+  return [...new Set(raw.filter((x): x is string => typeof x === 'string' && x.length > 0))].slice(0, 500);
+};
+
+/**
+ * Mark notices as shown to this reader.
+ *
+ * Idempotent, and quiet about ids it does not recognise — a browser that
+ * has been open since before a notice was deleted should not get an error
+ * for saying it read it.
+ */
+router.post('/seen', async (req: AuthRequest, res: Response) => {
+  const ids = idsFrom(req.body);
+  if (ids.length === 0) return res.json({ ok: true, marked: 0 });
+  const [live, already] = await Promise.all([
+    prisma.announcement.findMany({ where: { id: { in: ids } }, select: { id: true } }),
+    prisma.announcementRead.findMany({
+      where: { userId: req.user!.id, announcementId: { in: ids } },
+      select: { announcementId: true },
+    }),
+  ]);
+  // SQLite has no "insert or ignore" through createMany, so the rows that
+  // exist are found first rather than inserted and forgiven.
+  const known = new Set(already.map(r => r.announcementId));
+  const fresh = live.filter(a => !known.has(a.id));
+  if (fresh.length > 0) {
+    await prisma.announcementRead.createMany({
+      data: fresh.map(a => ({ userId: req.user!.id, announcementId: a.id })),
+    });
+  }
+  res.json({ ok: true, marked: fresh.length });
+});
+
+/**
+ * Tidy notices out of this reader's own panel.
+ *
+ * Clearing is not deleting: the notice stays on the admin page and on
+ * everyone else's panel. Clearing counts as having seen it, so a row that
+ * already exists is updated rather than added.
+ */
+router.post('/clear', async (req: AuthRequest, res: Response) => {
+  const ids = idsFrom(req.body);
+  if (ids.length === 0) return res.json({ ok: true, cleared: 0 });
+  const live = await prisma.announcement.findMany({
+    where: { id: { in: ids } },
+    select: { id: true },
+  });
+  await prisma.$transaction(live.map(a => prisma.announcementRead.upsert({
+    where: { userId_announcementId: { userId: req.user!.id, announcementId: a.id } },
+    update: { cleared: true },
+    create: { userId: req.user!.id, announcementId: a.id, cleared: true },
+  })));
+  res.json({ ok: true, cleared: live.length });
 });
 
 router.post('/', async (req: AuthRequest, res: Response) => {

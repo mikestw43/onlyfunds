@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { fetchAnnouncements } from '../../services/api';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { fetchAnnouncements, markAnnouncementsSeen, clearAnnouncementsForMe,
+  type AnnouncementFeed } from '../../services/api';
 import { useTranslation } from '../../i18n/useTranslation';
 import { IconMegaphone } from '../icons';
-import { markAnnouncementsSeen, clearAnnouncements, useSeenIds, useClearedIds } from './announceSeen';
+import { handOverLocalReadState } from './announceSeen';
 
 /**
  * Notices from whoever runs the dashboard, as a panel of their own next to
@@ -43,7 +44,8 @@ export const AnnounceButton = () => {
   const [open, setOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
 
-  const { data: all = [] } = useQuery({
+  const qc = useQueryClient();
+  const { data: feed } = useQuery({
     queryKey: ['announcements'],
     queryFn: fetchAnnouncements,
     // A notice is not urgent. Often enough that one posted this morning is
@@ -52,8 +54,42 @@ export const AnnounceButton = () => {
     staleTime: 60_000,
   });
 
-  const seen = useSeenIds();
-  const cleared = useClearedIds();
+  const all = feed?.announcements ?? [];
+  // Read and cleared come from the server, so reading a notice on the
+  // phone clears its mark at the desk too.
+  const seen = new Set(feed?.seen ?? []);
+  const cleared = new Set(feed?.cleared ?? []);
+
+  /**
+   * Both marks go the same way: change the copy on screen at once, tell
+   * the server, and refetch when it answers. Waiting for the round trip
+   * would leave the number sitting there for a moment after the panel
+   * that cleared it is already open.
+   */
+  const patchFeed = (ids: string[], where: 'seen' | 'cleared') => {
+    qc.setQueryData<AnnouncementFeed>(['announcements'], prev => prev && ({
+      ...prev,
+      seen: [...new Set([...prev.seen, ...ids])],
+      cleared: where === 'cleared' ? [...new Set([...prev.cleared, ...ids])] : prev.cleared,
+    }));
+  };
+  const settle = () => { void qc.invalidateQueries({ queryKey: ['announcements'] }); };
+
+  const seenMutation = useMutation({
+    mutationFn: markAnnouncementsSeen,
+    onMutate: (ids: string[]) => patchFeed(ids, 'seen'),
+    onSettled: settle,
+  });
+  const clearMutation = useMutation({
+    mutationFn: clearAnnouncementsForMe,
+    onMutate: (ids: string[]) => patchFeed(ids, 'cleared'),
+    onSettled: settle,
+  });
+
+  // Whatever this browser remembered on its own, handed over once.
+  useEffect(() => { void handOverLocalReadState().then(sent => { if (sent) settle(); }); },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []);
   // What this reader has cleared is gone from their panel and from their
   // count — but still on the admin page, and still on everyone else's.
   const data = all.filter(a => !cleared.has(a.id));
@@ -70,7 +106,8 @@ export const AnnounceButton = () => {
     setOpen(o => {
       if (!o) {
         setFreshAtOpen(new Set(data.filter(a => !seen.has(a.id)).map(a => a.id)));
-        if (data.length) markAnnouncementsSeen(data.map(a => a.id));
+        const fresh = data.filter(a => !seen.has(a.id)).map(a => a.id);
+        if (fresh.length) seenMutation.mutate(fresh);
       }
       return !o;
     });
@@ -143,7 +180,7 @@ export const AnnounceButton = () => {
             </span>
             {data.length > 0 && (
               <button
-                onClick={() => clearAnnouncements(data.map(a => a.id))}
+                onClick={() => clearMutation.mutate(data.map(a => a.id))}
                 style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-body-sm)', color: 'var(--text-muted)', cursor: 'pointer', background: 'none', border: 'none', padding: 0, transition: 'color .15s' }}
                 onMouseEnter={e => (e.currentTarget.style.color = 'var(--danger)')}
                 onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-muted)')}

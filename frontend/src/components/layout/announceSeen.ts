@@ -1,101 +1,67 @@
-import { useEffect, useState } from 'react';
+import { markAnnouncementsSeen, clearAnnouncementsForMe } from '../../services/api';
 
 /**
- * Which notices this browser has already been shown.
+ * Handing this browser's own read marks over to the server, once.
  *
- * By id, not by time. The first version remembered "last looked at" as a
- * moment and counted anything newer as unread — comparing a timestamp the
- * server wrote against Date.now() in the browser. Those are two different
- * clocks. A server a few seconds ahead stamps a notice into the future, so
- * the moment it is posted it is already newer than "now", and it stays
- * unread however many times it is read. Posting two in a row then leaves
- * the count stuck at one: marking the second as seen finally covers the
- * first, and the second takes its place.
+ * Which notices had been read, and which had been tidied away, used to be
+ * kept in localStorage. That made "read" mean "read on this device": the
+ * same notice still carried a mark on the phone after being read at the
+ * desk, and clearing the panel on one device left it full on the other.
+ * The server keeps it per person now.
  *
- * An id is an id on both machines. Nothing to synchronise and nothing to
- * get wrong.
- *
- * Kept in the browser rather than on the server, like the notification
- * bell's: when somebody glanced at a notice is not the server's business,
- * and a count that followed them between devices would surprise more than
- * it would help.
+ * Nobody should have to re-read what they have already read to get there,
+ * so the first load after the change posts whatever this browser
+ * remembered and leaves a flag behind. The old keys are then removed —
+ * they are nobody's source of truth any more, and leaving them would have
+ * them silently diverge.
  */
-const LS_KEY = 'announce_seen_ids';
-const EVENT = 'announce-seen';
-/** Far more than the hundred the server will ever return. */
-const KEEP = 500;
-
-export const seenIds = (): Set<string> => {
-  try {
-    const raw = JSON.parse(localStorage.getItem(LS_KEY) || '[]');
-    return new Set(Array.isArray(raw) ? raw.filter(x => typeof x === 'string') : []);
-  } catch {
-    // Private windows, blocked site data, or something else's key in the
-    // way. Everything reads as unread, which is the harmless direction.
-    return new Set();
-  }
-};
-
-/** Called by the page with whatever it has just put on screen. */
-export const markAnnouncementsSeen = (ids: string[]): void => {
-  if (ids.length === 0) return;
-  try {
-    const kept = [...seenIds(), ...ids];
-    // Oldest first, so trimming drops the ones least likely to still be
-    // on the list the server hands back.
-    localStorage.setItem(LS_KEY, JSON.stringify([...new Set(kept)].slice(-KEEP)));
-  } catch { /* nothing to remember it with; the mark simply stays */ }
-  window.dispatchEvent(new Event(EVENT));
-};
-
-/**
- * Notices this reader has cleared out of their own panel.
- *
- * Separate from deleting, which is the admin's and removes it for
- * everybody. Clearing is one person tidying their own list: the notice
- * stays on the admin page and on everyone else's panel, and anything
- * posted afterwards still arrives.
- */
+const SEEN_KEY = 'announce_seen_ids';
 const CLEARED_KEY = 'announce_cleared_ids';
+const DONE_KEY = 'announce_read_state_handed_over';
 
-export const clearedIds = (): Set<string> => {
+const idsIn = (key: string): string[] => {
   try {
-    const raw = JSON.parse(localStorage.getItem(CLEARED_KEY) || '[]');
-    return new Set(Array.isArray(raw) ? raw.filter(x => typeof x === 'string') : []);
+    const raw = JSON.parse(localStorage.getItem(key) || '[]');
+    return Array.isArray(raw) ? raw.filter((x): x is string => typeof x === 'string') : [];
   } catch {
-    return new Set();
+    // A private window, blocked site data, or something else's key in the
+    // way. Nothing to hand over, which is the harmless direction.
+    return [];
   }
 };
 
-/** Hide these from this browser's panel, and count them as read with it. */
-export const clearAnnouncements = (ids: string[]): void => {
-  if (ids.length === 0) return;
+/**
+ * Returns true when something was sent, so the caller knows to refetch.
+ * A failure leaves the flag unset and the keys in place: the next load
+ * tries again rather than losing the marks.
+ */
+export const handOverLocalReadState = async (): Promise<boolean> => {
+  let done = false;
   try {
-    const kept = [...clearedIds(), ...ids];
-    localStorage.setItem(CLEARED_KEY, JSON.stringify([...new Set(kept)].slice(-KEEP)));
-  } catch { /* nothing to remember it with */ }
-  markAnnouncementsSeen(ids);
-};
+    done = localStorage.getItem(DONE_KEY) === '1';
+  } catch {
+    return false;
+  }
+  if (done) return false;
 
-/** Re-read whenever the page marks something, so the count drops without
- *  a reload. */
-export const useSeenIds = (): Set<string> => {
-  const [seen, setSeen] = useState(seenIds);
-  useEffect(() => {
-    const onSeen = () => setSeen(seenIds());
-    window.addEventListener(EVENT, onSeen);
-    return () => window.removeEventListener(EVENT, onSeen);
-  }, []);
-  return seen;
-};
+  const seen = idsIn(SEEN_KEY);
+  const cleared = idsIn(CLEARED_KEY);
 
-/** The same, for what has been cleared away. */
-export const useClearedIds = (): Set<string> => {
-  const [cleared, setCleared] = useState(clearedIds);
-  useEffect(() => {
-    const onSeen = () => setCleared(clearedIds());
-    window.addEventListener(EVENT, onSeen);
-    return () => window.removeEventListener(EVENT, onSeen);
-  }, []);
-  return cleared;
+  try {
+    // Cleared first: it implies seen, and the server records both from
+    // the one call, so a failure in between cannot leave a notice cleared
+    // but unread.
+    await clearAnnouncementsForMe(cleared);
+    await markAnnouncementsSeen(seen);
+  } catch {
+    return false;
+  }
+
+  try {
+    localStorage.setItem(DONE_KEY, '1');
+    localStorage.removeItem(SEEN_KEY);
+    localStorage.removeItem(CLEARED_KEY);
+  } catch { /* the flag is a convenience; sending again is harmless */ }
+
+  return seen.length > 0 || cleared.length > 0;
 };

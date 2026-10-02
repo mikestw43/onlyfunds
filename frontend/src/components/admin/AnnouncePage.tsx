@@ -30,10 +30,11 @@ export const AnnouncePage = () => {
   const addToast = useUIStore(s => s.addToast);
   const qc = useQueryClient();
 
-  const { data: announcements = [], isLoading } = useQuery({
+  const { data: feed, isLoading } = useQuery({
     queryKey: ['announcements'],
     queryFn: fetchAnnouncements,
   });
+  const announcements = feed?.announcements ?? [];
 
   // This page does not mark anything read. It is where notices are
   // written, and the panel in the header is where they are read — so an

@@ -12,45 +12,51 @@ datasource db {
 }
 
 model User {
-  id               String               @id @default(uuid())
-  email            String               @unique
-  password         String? // optional — Google-only users have no password
-  googleId         String?              @unique // populated when account is linked to a Google login
-  avatarUrl        String? // pulled from Google profile when available
-  name             String?
-  displayName      String?
-  mobile           String?
-  phoneCountry     String?
-  role             String               @default("user")
-  status           String               @default("active") // 'active' | 'pending' | 'rejected' | 'suspended'
-  telegramBotToken String?
-  telegramChatId   String?
+  id                  String               @id @default(uuid())
+  email               String               @unique
+  password            String? // optional — Google-only users have no password
+  googleId            String?              @unique // populated when account is linked to a Google login
+  avatarUrl           String? // pulled from Google profile when available
+  name                String?
+  displayName         String?
+  mobile              String?
+  phoneCountry        String?
+  role                String               @default("user")
+  status              String               @default("active") // 'active' | 'pending' | 'rejected' | 'suspended'
+  telegramBotToken    String?
+  telegramChatId      String?
   // Scheduled Reports
-  reportEnabled    Boolean              @default(false)
-  reportFrequency  String               @default("daily")
-  reportTime       String               @default("20:00")
-  reportDay        Int                  @default(1)
+  reportEnabled       Boolean              @default(false)
+  reportFrequency     String               @default("daily")
+  reportTime          String               @default("20:00")
+  reportDay           Int                  @default(1)
   // The assistant. Off for everyone but an admin until it is switched on
   // per person: every question is paid for by whoever owns the API key,
   // which is the person running the dashboard, not the one asking.
-  aiEnabled        Boolean              @default(false)
+  aiEnabled           Boolean              @default(false)
   /// Questions a day. 0 means no limit; admins are never limited.
-  aiDailyLimit     Int                  @default(30)
+  aiDailyLimit        Int                  @default(30)
   // Preferences
-  language         String               @default("en")
-  theme            String               @default("dark")
-  timezone         String               @default("Asia/Bangkok")
+  language            String               @default("en")
+  theme               String               @default("dark")
+  timezone            String               @default("Asia/Bangkok")
   // Live ticker symbols (JSON array of strings). Null = use server default.
-  tickerSymbols    Json?
-  passwordResets   PasswordResetToken[]
-  createdAt        DateTime             @default(now())
-  updatedAt        DateTime             @updatedAt
-  lastLoginAt      DateTime?
-  accounts         Account[]
-  accountGroups    AccountGroup[]
-  notificationLogs NotificationLog[]
-  auditLogs        AuditLog[]
-  pushDevices      PushDevice[]
+  tickerSymbols       Json?
+  passwordResets      PasswordResetToken[]
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  lastLoginAt         DateTime?
+  /// How far down the alert bell this person has read, on the server's own
+  /// clock. Per person, not per device: reading an alert on the phone has
+  /// to clear the number on the desktop too, and comparing a server
+  /// timestamp against a browser's Date.now() was never reliable anyway.
+  notificationsSeenAt DateTime?
+  accounts            Account[]
+  accountGroups       AccountGroup[]
+  notificationLogs    NotificationLog[]
+  auditLogs           AuditLog[]
+  pushDevices         PushDevice[]
+  announcementReads   AnnouncementRead[]
 }
 
 model AccountGroup {
@@ -276,21 +282,41 @@ model PushDevice {
 /// them: three sample notices written at design time, and anything posted
 /// was gone on leaving the page.
 model Announcement {
-  id         String   @id @default(uuid())
+  id         String             @id @default(uuid())
   title      String
   body       String
   /// info | warning | update | maintenance — what colour it reads as.
-  type       String   @default("info")
+  type       String             @default("info")
   /// Held at the top of the list, above the dated ones.
-  pinned     Boolean  @default(false)
+  pinned     Boolean            @default(false)
   /// Who posted it, kept by name so a deleted admin does not erase the
   /// authorship of a notice everyone has read.
   authorId   String?
   authorName String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+  reads      AnnouncementRead[]
 
   @@index([createdAt])
+}
+
+/// One row per person per notice they have been shown. Its absence is
+/// "unread", so a notice posted later needs nothing written anywhere to
+/// count as new. Kept on the server rather than in each browser so that
+/// reading a notice on the phone also clears it on the desktop.
+model AnnouncementRead {
+  id             String       @id @default(uuid())
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  announcementId String
+  announcement   Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  /// The reader tidied this one out of their own panel. Not deleting,
+  /// which is the admin's and removes it for everybody.
+  cleared        Boolean      @default(false)
+  seenAt         DateTime     @default(now())
+
+  @@unique([userId, announcementId])
+  @@index([userId])
 }
 
 model NotificationLog {
