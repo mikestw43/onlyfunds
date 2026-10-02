@@ -166,6 +166,10 @@ model AlertState {
   /// The reading when it last alerted, so a condition that gets markedly
   /// worse can speak up instead of staying silent behind `firing`.
   lastValue   Float?
+  /// The line this state was recorded against. Moving a threshold makes
+  /// everything remembered about the old one meaningless, so a state whose
+  /// rule no longer matches is not allowed to keep an alert quiet.
+  threshold   Float?
   lastFiredAt DateTime?
   updatedAt   DateTime  @updatedAt
 

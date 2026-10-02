@@ -28,6 +28,9 @@ type AlertType = 'drawdown' | 'equity' | 'margin' | 'offline';
  *   3. If it gets markedly worse while already alerting, that is news
  *      rather than a repeat, so it speaks up again — 80% becoming 95% is
  *      not something to stay quiet about.
+ *   4. All of the above is remembered against the threshold in force at
+ *      the time. Move the threshold and the memory is void: whatever was
+ *      announced about the old line says nothing about the new one.
  *
  * Over all of it sits the account's own floor: however many of the above
  * are satisfied, nothing is sent within alertRepeatMins of the last one.
@@ -83,31 +86,48 @@ const shouldSend = async (
     return { send: breached };
   }
 
+  // Is this still the same rule the state was recorded against? Moving a
+  // threshold throws away everything remembered about the old one. A
+  // drawdown sitting at 80.3% was announced against a limit of 50% and
+  // latched as "already said"; raise the limit to 80% and that latch would
+  // swallow the first breach of the new line — the alert the person moved
+  // the line in order to get. A row written before this column existed
+  // records no rule, and is treated the same way: one alert too many beats
+  // a latch nobody can see.
+  const sameRule = state?.threshold != null && Math.abs(state.threshold - threshold) < 1e-9;
+
   if (!breached) {
-    // Only stand down once it is properly clear, not the moment it dips
-    // back under the line.
-    if (state?.firing && recovered(type, value, threshold)) {
+    // Stand down once it is properly clear, not the moment it dips back
+    // under the line — and immediately if the line it was measured against
+    // is gone. Either way the stored rule is brought up to date, so the
+    // next breach is judged against what is set now.
+    if (state && (!sameRule || (state.firing && recovered(type, value, threshold)))) {
       await prisma.alertState.update({
         where: { accountId_type: { accountId, type } },
-        data: { firing: false },
+        data: { firing: false, threshold },
       }).catch(() => {});
     }
     return { send: false };
   }
 
+  // The floor holds across a threshold change: changing a line is
+  // deliberate, so it re-arms the alert, but it must not be a way to make
+  // the phone buzz faster than the account's own limit allows.
   const floorMs = Math.max(0, repeatMins) * 60 * 1000;
   const tooSoon = state?.lastFiredAt != null && Date.now() - state.lastFiredAt.getTime() < floorMs;
 
-  // Already announced, and no worse than when it was: nothing to say.
-  const worse = state?.firing && state.lastValue != null
+  // Already announced under this same rule, and no worse than when it was:
+  // nothing to say.
+  const latched = Boolean(state?.firing) && sameRule;
+  const worse = latched && state?.lastValue != null
     && materiallyWorse(type, value, state.lastValue);
-  if (state?.firing && !worse) return { send: false };
+  if (latched && !worse) return { send: false };
   if (tooSoon) return { send: false };
 
   await prisma.alertState.upsert({
     where: { accountId_type: { accountId, type } },
-    update: { firing: true, lastValue: value, lastFiredAt: new Date() },
-    create: { accountId, type, firing: true, lastValue: value, lastFiredAt: new Date() },
+    update: { firing: true, lastValue: value, threshold, lastFiredAt: new Date() },
+    create: { accountId, type, firing: true, lastValue: value, threshold, lastFiredAt: new Date() },
   }).catch(err => console.error('[Alert] could not record alert state:', err?.message));
 
   return { send: true };
