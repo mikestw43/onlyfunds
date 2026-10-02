@@ -10,7 +10,7 @@ would have to be made twice and the second one would eventually be
 forgotten, which for the build that sits on the LIVE accounts is not a
 risk worth taking for the sake of avoiding one script.
 
-The master is ea/OnlyFunds_Reporter_v1.5.mq5 and it compiles as-is (as
+The master is ea/OnlyFunds_Reporter_v1.6.mq5 and it compiles as-is (as
 the OnlyFunds Report build). The AI build is the same file with
 ONLYFUNDS_AI defined at the top, so the trading code is compiled in.
 
@@ -24,7 +24,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-MASTER = ROOT / 'ea' / 'OnlyFunds_Reporter_v1.5.mq5'
+MASTER = ROOT / 'ea' / 'OnlyFunds_Reporter_v1.6.mq5'
 OUT_DIR = ROOT / 'frontend' / 'public' / 'ea'
 
 FLAG = 'ONLYFUNDS_AI'
@@ -34,17 +34,17 @@ FLAG = 'ONLYFUNDS_AI'
 # with AI" and "Report Only" differed by a single word, which is how the
 # trading build ends up on a live account by mistake.
 VARIANTS = {
-    'OnlyFunds_Report_v1.5.mq5': {
+    'OnlyFunds_Report_v1.6.mq5': {
         'ai': False,
-        'title': 'OnlyFunds Report v1.5',
+        'title': 'OnlyFunds Report v1.6',
         'blurb': 'Reports this account to the dashboard. It contains no trading\n'
                  '// code at all: there is no setting to switch on, and nothing the\n'
                  '// server sends can make it place, change or close an order.\n'
                  '// This is the one for accounts where real money is working.',
     },
-    'OnlyFunds_AI_v1.5.mq5': {
+    'OnlyFunds_AI_v1.6.mq5': {
         'ai': True,
-        'title': 'OnlyFunds AI v1.5',
+        'title': 'OnlyFunds AI v1.6',
         'blurb': 'Reports this account AND carries out the orders the dashboard\n'
                  '// sends, once you set EnableTrading = true on its chart. Start\n'
                  '// it on a demo account.',
@@ -65,7 +65,7 @@ def banner(name: str, spec: dict) -> str:
         f'//| {spec["title"]:<64} |\n'
         '//|                                                                  |\n'
         '//| GENERATED FILE - do not edit.                                    |\n'
-        '//| Source: ea/OnlyFunds_Reporter_v1.5.mq5                           |\n'
+        '//| Source: ea/OnlyFunds_Reporter_v1.6.mq5                           |\n'
         '//| Rebuild: python3 scripts/build-ea-variants.py                    |\n'
         '//+------------------------------------------------------------------+\n'
         f'// {spec["blurb"]}\n'

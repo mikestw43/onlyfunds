@@ -88,7 +88,7 @@
 //|  Edit THIS file. The two generated ones are overwritten.         |
 //+------------------------------------------------------------------+
 #property copyright "OnlyFunds"
-#property version   "1.5"
+#property version   "1.6"
 #ifdef ONLYFUNDS_AI
 #property description "OnlyFunds AI v1.4: reports the account, and carries out dashboard commands when EnableTrading is on"
 #else
@@ -567,6 +567,42 @@ double AwayFrom(string sym, double entry, double points, bool buy, bool isStop)
    return NormalizeDouble(below ? entry - points * pt : entry + points * pt, dg);
 }
 
+/**
+ * Whether a stop that far from the market is going to be refused for
+ * sitting too close, and in plain words why.
+ *
+ * Two things stand in the way of it, and only one of them is the
+ * broker's own minimum: SYMBOL_TRADE_STOPS_LEVEL, which plenty of
+ * brokers report as zero and then enforce at execution anyway. The other
+ * is the spread, and that is not a rule but arithmetic. A buy opens at
+ * the ask and its stop is measured against the bid, so a stop closer
+ * than the spread is already on the wrong side of the market: 20 points
+ * of stop on a symbol with 30 points of spread cannot exist. A target is
+ * the mirror and the spread works for it, so it needs the broker's
+ * minimum less the spread, not more.
+ */
+bool TooCloseToMarket(string sym, double points, bool isStop, string &why)
+{
+   if(points <= 0) return false;
+   double pt = SymbolInfoDouble(sym, SYMBOL_POINT);
+   if(pt <= 0) return false;
+
+   double bid = SymbolInfoDouble(sym, SYMBOL_BID);
+   double ask = SymbolInfoDouble(sym, SYMBOL_ASK);
+   if(bid <= 0 || ask <= 0) return false;   // no quote: let the broker judge
+
+   double spreadPts = (ask - bid) / pt;
+   double stopsPts  = (double)SymbolInfoInteger(sym, SYMBOL_TRADE_STOPS_LEVEL);
+   double needed    = isStop ? spreadPts + stopsPts : MathMax(0.0, stopsPts - spreadPts);
+   if(points > needed) return false;
+
+   why = StringFormat("%s %d points is too close to the market on %s — the spread is %d points"
+                      " and the broker's own minimum is %d, so it needs more than %d. Nothing was opened.",
+                      isStop ? "SL" : "TP", (int)points, sym,
+                      (int)MathRound(spreadPts), (int)stopsPts, (int)MathRound(needed));
+   return true;
+}
+
 string BuildSpecsJson()
 {
    if(SpecsMinutes <= 0) return "";
@@ -914,6 +950,44 @@ bool TradingPossible(string &why)
    return true;
 }
 
+/**
+ * One order, with the retries that are worth making.
+ *
+ * Pulled out of DoOpenTrade because the order may have to be sent twice:
+ * once with the stop in the request, and — only if a broker turns out
+ * not to accept a stop that way — once without.
+ */
+bool SendOrder(string kind, bool buy, double vol, string sym, double price,
+               double sl, double tp, string note)
+{
+   for(int attempt = 0; attempt <= RetryCount; attempt++)
+   {
+      if(attempt > 0) Sleep(400);
+
+      bool ok = false;
+      if(kind == "market")
+         ok = buy ? g_trade.Buy(vol, sym, 0.0, sl, tp, note)
+                  : g_trade.Sell(vol, sym, 0.0, sl, tp, note);
+      else if(kind == "limit")
+         ok = buy ? g_trade.BuyLimit(vol, price, sym, sl, tp, ORDER_TIME_GTC, 0, note)
+                  : g_trade.SellLimit(vol, price, sym, sl, tp, ORDER_TIME_GTC, 0, note);
+      else if(kind == "stop")
+         ok = buy ? g_trade.BuyStop(vol, price, sym, sl, tp, ORDER_TIME_GTC, 0, note)
+                  : g_trade.SellStop(vol, price, sym, sl, tp, ORDER_TIME_GTC, 0, note);
+      else
+         return false;
+
+      if(ok) return true;
+
+      // Only a requote or a moved price is worth trying again; anything
+      // else will fail the same way on the next attempt.
+      uint code = g_trade.ResultRetcode();
+      if(code != TRADE_RETCODE_REQUOTE && code != TRADE_RETCODE_PRICE_CHANGED
+         && code != TRADE_RETCODE_PRICE_OFF) return false;
+   }
+   return false;
+}
+
 //+------------------------------------------------------------------+
 //| Open a position or place a pending order                         |
 //+------------------------------------------------------------------+
@@ -969,43 +1043,54 @@ void DoOpenTrade(string cmd, string id)
       if(tpPts > 0) tp = AwayFrom(sym, price, tpPts, buy, false);
    }
 
-   // A market order does not. Open it bare and set the stops from the fill
-   // a moment later — a few milliseconds without a stop, against a stop in
-   // the wrong place or an order the broker refuses outright.
-   bool fromFill = (kind == "market" && (slPts > 0 || tpPts > 0));
-   double sendSl = fromFill ? 0.0 : sl;
-   double sendTp = fromFill ? 0.0 : tp;
-
-   for(int attempt = 0; attempt <= RetryCount && !ok; attempt++)
+   if(kind != "market" && kind != "limit" && kind != "stop")
    {
-      if(attempt > 0) Sleep(400);
+      Ack(id, false, "unknown order type: " + kind);
+      return;
+   }
 
-      if(kind == "market")
+   // A market order does not know its fill until it is filled. It used to
+   // be opened bare and given its stop a moment later, which reads as the
+   // careful thing to do and is not: when the broker refuses the stop, the
+   // position is already open and stays open with nothing behind it. An
+   // order asked for with a stop must not be able to become a position
+   // without one. So the stop is worked out from the price on screen and
+   // goes in the request, where the broker takes the pair or refuses the
+   // pair; the handful of points between that quote and the real fill are
+   // corrected afterwards, and that correction can fail harmlessly,
+   // because a stop a few points out is still a stop.
+   bool fromFill = (kind == "market" && (slPts > 0 || tpPts > 0));
+   if(fromFill)
+   {
+      // Refused here rather than by the broker, because here it can be
+      // said in numbers the person can act on.
+      string tooClose = "";
+      if(TooCloseToMarket(sym, slPts, true, tooClose)
+         || TooCloseToMarket(sym, tpPts, false, tooClose))
       {
-         ok = buy ? g_trade.Buy(vol, sym, 0.0, sendSl, sendTp, note)
-                  : g_trade.Sell(vol, sym, 0.0, sendSl, sendTp, note);
-      }
-      else if(kind == "limit")
-      {
-         ok = buy ? g_trade.BuyLimit(vol, price, sym, sl, tp, ORDER_TIME_GTC, 0, note)
-                  : g_trade.SellLimit(vol, price, sym, sl, tp, ORDER_TIME_GTC, 0, note);
-      }
-      else if(kind == "stop")
-      {
-         ok = buy ? g_trade.BuyStop(vol, price, sym, sl, tp, ORDER_TIME_GTC, 0, note)
-                  : g_trade.SellStop(vol, price, sym, sl, tp, ORDER_TIME_GTC, 0, note);
-      }
-      else
-      {
-         Ack(id, false, "unknown order type: " + kind);
+         Ack(id, false, tooClose);
          return;
       }
+      double quote = buy ? SymbolInfoDouble(sym, SYMBOL_ASK) : SymbolInfoDouble(sym, SYMBOL_BID);
+      if(quote <= 0) { Ack(id, false, "no price for " + sym + " on this terminal yet"); return; }
+      if(slPts > 0) sl = AwayFrom(sym, quote, slPts, buy, true);
+      if(tpPts > 0) tp = AwayFrom(sym, quote, tpPts, buy, false);
+   }
 
-      // Only a requote or a moved price is worth trying again; anything
-      // else will fail the same way on the next attempt.
-      uint code = g_trade.ResultRetcode();
-      if(!ok && code != TRADE_RETCODE_REQUOTE && code != TRADE_RETCODE_PRICE_CHANGED
-             && code != TRADE_RETCODE_PRICE_OFF) break;
+   ok = SendOrder(kind, buy, vol, sym, price, sl, tp, note);
+
+   // Some brokers will not take a stop in the same request as a market
+   // order at all, whatever the distance. The arithmetic above says this
+   // one has room, so a refusal for invalid stops is about the request
+   // and not the distance: open it bare and set the stop a moment later,
+   // the way this worked before. The position can still end up without a
+   // stop that way, and if it does it says so in capitals.
+   bool bare = false;
+   if(!ok && fromFill && (sl > 0 || tp > 0)
+      && g_trade.ResultRetcode() == TRADE_RETCODE_INVALID_STOPS)
+   {
+      bare = true;
+      ok = SendOrder(kind, buy, vol, sym, price, 0.0, 0.0, note);
    }
 
    if(ok)
@@ -1028,25 +1113,42 @@ void DoOpenTrade(string cmd, string id)
             fill = PositionGetDouble(POSITION_PRICE_OPEN);
          }
 
+         int dg = (int)SymbolInfoInteger(sym, SYMBOL_DIGITS);
          if(fill <= 0)
-            detail = "opened, but the fill price could not be read — no stop was set";
+         {
+            detail = bare
+               ? "opened, but the fill price could not be read — no stop was set"
+               : StringFormat("opened, SL %s TP %s — set from the quote, the fill price could not be read",
+                   sl > 0 ? DoubleToString(sl, dg) : "—",
+                   tp > 0 ? DoubleToString(tp, dg) : "—");
+         }
          else
          {
             double nsl = slPts > 0 ? AwayFrom(sym, fill, slPts, buy, true)  : 0.0;
             double ntp = tpPts > 0 ? AwayFrom(sym, fill, tpPts, buy, false) : 0.0;
             if(g_trade.PositionModify(posT, nsl, ntp))
             {
-               int dg = (int)SymbolInfoInteger(sym, SYMBOL_DIGITS);
                detail = StringFormat("opened at %s, SL %s TP %s",
                   DoubleToString(fill, dg),
                   nsl > 0 ? DoubleToString(nsl, dg) : "—",
                   ntp > 0 ? DoubleToString(ntp, dg) : "—");
             }
-            else
+            else if(bare)
             {
-               // Say so loudly: the position exists and is unprotected.
+               // Nothing was attached to the order and nothing would go on
+               // afterwards. Say so loudly: the position is unprotected.
                detail = StringFormat("OPENED WITHOUT A STOP — %u %s",
                   g_trade.ResultRetcode(), g_trade.ResultRetcodeDescription());
+            }
+            else
+            {
+               // The stop went in with the order and is on the position;
+               // only the few points between the quote and the fill could
+               // not be corrected. Worth a word, not an alarm.
+               detail = StringFormat("opened at %s, SL %s TP %s — measured from the quote, not the fill",
+                  DoubleToString(fill, dg),
+                  sl > 0 ? DoubleToString(sl, dg) : "—",
+                  tp > 0 ? DoubleToString(tp, dg) : "—");
             }
          }
       }
@@ -1055,7 +1157,11 @@ void DoOpenTrade(string cmd, string id)
    }
    else
    {
-      Ack(id, false, StringFormat("%u %s", g_trade.ResultRetcode(), g_trade.ResultRetcodeDescription()));
+      uint code = g_trade.ResultRetcode();
+      string msg = StringFormat("%u %s", code, g_trade.ResultRetcodeDescription());
+      if(code == TRADE_RETCODE_INVALID_STOPS && (slPts > 0 || tpPts > 0 || sl > 0 || tp > 0))
+         msg += StringFormat(" — the stop is too close to the market on %s. Nothing was opened.", sym);
+      Ack(id, false, msg);
    }
 }
 
