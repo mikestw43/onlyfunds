@@ -582,6 +582,7 @@
   "acc.alert_ml": "MARGIN LEVEL ALERT (fire when margin level ≤)",
   "acc.alert_repeat": "REPEAT THE ALERT EVERY",
   "acc.alert_repeat_hint": "While a reading stays over its line, the alert repeats on this interval until it comes back down — then it stops on its own. A reading that gets markedly worse does not wait for the next one. Minimum 1 minute.",
+  "acc.alert_repeat_blank": "Blank = every 30 minutes",
   "acc.alert_mins": "min",
   "acc.btn_alert": "ALERT",
   "acc.btn_delete": "DELETE",

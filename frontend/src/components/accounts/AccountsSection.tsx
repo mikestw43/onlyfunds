@@ -183,7 +183,7 @@ const DeleteDialog = ({ account, onClose }: { account: Account; onClose: () => v
 // ─── NumField (module-level to avoid focus loss on re-render) ─────────────────
 
 const NumField = ({
-  label, value, onChange, onClear, placeholder, unit,
+  label, value, onChange, onClear, placeholder, unit, min = '0', step = '0.1', status,
 }: {
   label: string;
   value: number | null;
@@ -191,12 +191,16 @@ const NumField = ({
   onClear: () => void;
   placeholder: string;
   unit: string;
+  min?: string;
+  step?: string;
+  /** Replaces the Disabled/Enabled line for a field where blank is not off. */
+  status?: string;
 }) => (
   <div>
     <label style={lbl}>{label}</label>
     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
       <input
-        type="number" min="0" step="0.1"
+        type="number" min={min} step={step}
         value={value ?? ''}
         onChange={e => onChange(e.target.value === '' ? null : parseFloat(e.target.value))}
         placeholder={placeholder}
@@ -209,12 +213,17 @@ const NumField = ({
       )}
     </div>
     <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-body-sm)', color: 'var(--text-dim)', marginTop: '3px' }}>
-      {value === null ? 'Disabled' : 'Enabled'}
+      {status ?? (value === null ? 'Disabled' : 'Enabled')}
     </div>
   </div>
 );
 
 // ─── AlertThresholdsDialog ────────────────────────────────────────────────────
+
+/** What a blank repeat interval means, here and on the server. */
+const DEFAULT_REPEAT_MINS = 30;
+
+type AlertForm = Omit<AccountAlerts, 'id' | 'alertRepeatMins'> & { alertRepeatMins: number | null };
 
 const AlertThresholdsDialog = ({ account, onClose }: { account: Account; onClose: () => void }) => {
   const t = useTranslation();
@@ -226,17 +235,24 @@ const AlertThresholdsDialog = ({ account, onClose }: { account: Account; onClose
     queryFn: () => getAccountAlerts(account.id),
   });
 
-  const [form, setForm] = useState<Omit<AccountAlerts, 'id'>>({
+  // The repeat interval is the one field where blank is a real state to be
+  // in: emptying the box to type a new number must leave it empty, not
+  // snap back to the default under the typing finger. It is resolved to
+  // the default on the way out instead.
+  const [form, setForm] = useState<AlertForm>({
     alertDrawdown: null, alertEquityBelow: null, alertMarginLevel: null, alertOffline: false,
-    alertRepeatMins: 30,
+    alertRepeatMins: DEFAULT_REPEAT_MINS,
   });
 
   useEffect(() => {
-    if (alerts) setForm({ alertDrawdown: alerts.alertDrawdown, alertEquityBelow: alerts.alertEquityBelow, alertMarginLevel: alerts.alertMarginLevel, alertOffline: alerts.alertOffline, alertRepeatMins: alerts.alertRepeatMins ?? 30 });
+    if (alerts) setForm({ alertDrawdown: alerts.alertDrawdown, alertEquityBelow: alerts.alertEquityBelow, alertMarginLevel: alerts.alertMarginLevel, alertOffline: alerts.alertOffline, alertRepeatMins: alerts.alertRepeatMins ?? DEFAULT_REPEAT_MINS });
   }, [alerts]);
 
   const mutation = useMutation({
-    mutationFn: () => saveAccountAlerts(account.id, form),
+    mutationFn: () => saveAccountAlerts(account.id, {
+      ...form,
+      alertRepeatMins: form.alertRepeatMins ?? DEFAULT_REPEAT_MINS,
+    }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['account-alerts', account.id] });
       // The button's colour is read off the accounts list, not off this
@@ -274,10 +290,13 @@ const AlertThresholdsDialog = ({ account, onClose }: { account: Account; onClose
             <NumField
               label={t('acc.alert_repeat')}
               value={form.alertRepeatMins}
-              onChange={v => setForm(p => ({ ...p, alertRepeatMins: v ?? 30 }))}
-              onClear={() => setForm(p => ({ ...p, alertRepeatMins: 30 }))}
-              placeholder="30"
+              onChange={v => setForm(p => ({ ...p, alertRepeatMins: v }))}
+              onClear={() => setForm(p => ({ ...p, alertRepeatMins: null }))}
+              placeholder={String(DEFAULT_REPEAT_MINS)}
               unit={t('acc.alert_mins')}
+              min="1"
+              step="1"
+              status={form.alertRepeatMins === null ? t('acc.alert_repeat_blank') : ''}
             />
             <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-micro)', color: 'var(--text-muted)', lineHeight: 1.6, marginTop: '4px' }}>
               {t('acc.alert_repeat_hint')}
