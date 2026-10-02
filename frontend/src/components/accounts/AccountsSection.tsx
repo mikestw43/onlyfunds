@@ -193,9 +193,11 @@ const NumField = ({
   unit: string;
   min?: string;
   step?: string;
-  /** Replaces the Disabled/Enabled line for a field where blank is not off. */
+  /** Replaces the on/off line for a field where blank is not off. */
   status?: string;
-}) => (
+}) => {
+  const t = useTranslation();
+  return (
   <div>
     <label style={lbl}>{label}</label>
     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -213,10 +215,11 @@ const NumField = ({
       )}
     </div>
     <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-body-sm)', color: 'var(--text-dim)', marginTop: '3px' }}>
-      {status ?? (value === null ? 'Disabled' : 'Enabled')}
+      {status ?? (value === null ? t('acc.alert_field_off') : t('acc.alert_field_on'))}
     </div>
   </div>
-);
+  );
+};
 
 // ─── AlertThresholdsDialog ────────────────────────────────────────────────────
 
