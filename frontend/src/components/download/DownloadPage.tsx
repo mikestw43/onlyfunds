@@ -25,9 +25,11 @@ const EA_RELEASES: EaRelease[] = [
       'it will say anything about lot sizes. An order asked for with a stop ' +
       'is never opened without one: if the stop is too close for the broker ' +
       'to take, nothing is opened and it tells you how far it has to be. ' +
-      'Put this one on a demo account first. Open it in MetaEditor and ' +
-      'compile it (F7), then it installs into MQL5/Experts like any other.',
+      'Put this one on a demo account first. Take the .EX5 — it is already ' +
+      'compiled, and drops straight into MQL5/Experts. The source is there ' +
+      'for anyone who wants to read it.',
     downloads: [
+      { platform: 'MT5', filename: 'OnlyFunds_AI_v1.6.ex5', ext: '.EX5' },
       { platform: 'MT5', filename: 'OnlyFunds_AI_v1.6.mq5', ext: '.MQ5 SOURCE' },
     ],
   },
@@ -39,9 +41,10 @@ const EA_RELEASES: EaRelease[] = [
       'code left out of the build entirely — not switched off: absent. There ' +
       'is no setting to find and nothing the server sends can make it place, ' +
       'change or close an order. This is the one for accounts where real ' +
-      'money is working. Open it in MetaEditor and compile it (F7) first; ' +
-      'reading the source is how you confirm there is no trading code in it.',
+      'money is working. Take the .EX5; the source is there to be read, and ' +
+      'reading it is how you confirm there is no trading code in it.',
     downloads: [
+      { platform: 'MT5', filename: 'OnlyFunds_Report_v1.6.ex5', ext: '.EX5' },
       { platform: 'MT5', filename: 'OnlyFunds_Report_v1.6.mq5', ext: '.MQ5 SOURCE' },
     ],
   },
