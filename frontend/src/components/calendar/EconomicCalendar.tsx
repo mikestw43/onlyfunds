@@ -3,6 +3,7 @@ import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import type { EconomicEvent } from '../../types';
 import { lastCalendarMeta, fetchEconomicCalendar } from '../../services/api';
 import { useTranslation } from '../../i18n/useTranslation';
+import { IconCalendar } from '../icons';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -528,7 +529,9 @@ export const EconomicCalendar = () => {
       {/* ── Events ── */}
       {filtered.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '48px 0' }}>
-          <div style={{ fontSize: '24px', marginBottom: '10px', color: 'var(--text-dim)' }}>📅</div>
+          <div style={{ marginBottom: '10px', color: 'var(--text-dim)', display: 'flex', justifyContent: 'center' }}>
+            <IconCalendar size={26} />
+          </div>
           <p style={{ fontFamily: 'var(--ff-section)', fontSize: 'var(--fs-section)', color: 'var(--text-dim)', letterSpacing: '.5px' }}>
             {t('calendar.no_events')}
           </p>
