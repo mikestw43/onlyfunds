@@ -748,17 +748,25 @@ export const AiSheet = () => {
     : [];
 
   /**
-   * Put the position into the sentence: the symbol, then the ticket.
+   * Put the position into the sentence so a person can read it back.
    *
-   * The ticket alone is what the assistant acts on and is meaningless to
-   * read back; the symbol in front of it makes the sent message say what
-   * it did without having to look the number up again.
+   * It used to be the symbol and the ticket, and an eleven-digit ticket
+   * is not something anyone remembers or recognises — scrolling back
+   * through yesterday's chat, "XAUUSD.v #1042230561" says nothing about
+   * which position was meant. Side, size and the price it opened at do,
+   * and they are what the list is scanned by in the first place.
+   *
+   * The ticket stays, at the end, because it is the part the assistant
+   * acts on: two positions in the same symbol at the same size are told
+   * apart by nothing else.
    */
   const pickOrder = (r: { o: Order; accountName: string }) => {
     if (!at) return;
     const box = boxRef.current;
     const caret = box?.selectionStart ?? draft.length;
-    const label = `${r.o.symbol} #${r.o.ticket}`;
+    const side = r.o.type === 'SELL' ? 'sell' : 'buy';
+    const label = `${r.o.symbol} ${side} ${Number(r.o.lots ?? 0).toFixed(2)} lot`
+      + ` @ ${priceText(Number(r.o.openPrice ?? 0))} #${r.o.ticket}`;
     setDraft(draft.slice(0, at.at) + label + ' ' + draft.slice(caret));
     setAt(null);
     const to = at.at + label.length + 1;
@@ -1369,6 +1377,10 @@ export const AiSheet = () => {
               </span>
               <span className="ai-ord-sub">
                 <span className="ai-ord-acc">{r.accountName}</span>
+                {/* What it opened at. Two positions in the same symbol
+                    and size are told apart by this and nothing else a
+                    person can hold in their head. */}
+                <span className="ai-ord-at">@ {priceText(Number(r.o.openPrice ?? 0))}</span>
                 <span className="ai-ord-gap" />
                 <span className="ai-ord-tic">#{r.o.ticket}</span>
               </span>
@@ -1942,6 +1954,12 @@ export const AiSheet = () => {
           color: var(--text-muted); font-size: 12px; flex-shrink: 0;
           font-variant-numeric: tabular-nums;
         }
+        /* The opening price, beside the account it belongs to. Brighter
+           than the ticket because it is the part being read. */
+        .ai-ord-at {
+          color: var(--text-dim); font-size: 12px; flex-shrink: 0;
+          font-variant-numeric: tabular-nums; margin-left: 6px;
+        }
         .ai-pick-empty {
           padding: 12px;
           font-family: var(--ff-body); font-size: var(--fs-body-sm);
@@ -2153,6 +2171,16 @@ const readSpot = (): FabSpot | null => {
     return null;
   }
 };
+
+/**
+ * A price as the terminal would show it: no thousands separator, and no
+ * trailing zeros past what the symbol actually quotes — 4710.5 rather
+ * than 4,710.50000, and 1.12345 left alone.
+ */
+const priceText = (n: number): string =>
+  // Never fewer than two decimals, or the same symbol reads 2315.00 on
+  // one line and 2310.5 on the next.
+  n.toFixed(5).replace(/(\.\d{2}\d*?)0+$/, '$1');
 
 export const AiFab = ({ onClick, hidden }: { onClick: () => void; hidden?: boolean }) => {
   // null means it has never been moved, and the corner set in the CSS stands.
